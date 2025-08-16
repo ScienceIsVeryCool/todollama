@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gitllama"
+version = "0.1.0"
+description = "Simple git automation tool"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "GitLlama Team", email = "contact@gitllama.dev"}
+]
+keywords = ["git", "automation", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Environment :: Console",
+]
+requires-python = ">=3.8"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=22.0",
+    "build>=0.8",
+    "twine>=4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/gitllama"
+Repository = "https://github.com/your-org/gitllama.git"
+
+[project.scripts]
+gitllama = "gitllama.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"

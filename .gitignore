@@ -1,0 +1,183 @@
+# .gitignore
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# GitLlama specific
+gitllama_temp/
+*.gitllama.log
+
+---
+
+# .flake8
+[flake8]
+max-line-length = 88
+extend-ignore = E203, W503
+exclude = 
+    .git,
+    __pycache__,
+    build,
+    dist,
+    .eggs,
+    *.egg-info,
+    .venv,
+    .tox,
+    .coverage,
+    .pytest_cache
+
+---
+
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-toml
+      - id: check-json
+
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+        language_version: python3
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.3.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-PyYAML]
+
+---
+
+# MANIFEST.in
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include src/gitllama *.py
+recursive-exclude tests *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+
+---
+
+# Makefile
+.PHONY: help install install-dev test lint format type-check clean build upload upload-test
+
+help:
+	@echo "Available commands:"
+	@echo "  install      Install the package"
+	@echo "  install-dev  Install development dependencies"
+	@echo "  test         Run tests"
+	@echo "  lint         Run linting"
+	@echo "  format       Format code"
+	@echo "  type-check   Run type checking"
+	@echo "  clean        Clean build artifacts"
+	@echo "  build        Build the package"
+	@echo "  upload-test  Upload to test PyPI"
+	@echo "  upload       Upload to PyPI"
+
+install:
+	pip install .
+
+install-dev:
+	pip install -e ".[dev]"
+
+test:
+	pytest
+
+lint:
+	flake8 src tests
+
+format:
+	black src tests
+
+type-check:
+	mypy src
+
+clean:
+	rm -rf build/
+	rm -rf dist/
+	rm -rf *.egg-info/
+	find . -type d -name __pycache__ -delete
+	find . -type f -name "*.pyc" -delete
+
+build: clean
+	python -m build
+
+upload-test: build
+	twine upload --repository testpypi dist/*
+
+upload: build
+	twine upload dist/*
