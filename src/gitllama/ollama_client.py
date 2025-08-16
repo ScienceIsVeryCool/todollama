@@ -2,48 +2,11 @@
 
 import json
 import requests
-from typing import Dict, List, Optional, Generator
-import tiktoken
+from typing import Dict, List, Optional, Generator, Tuple
+import logging
 
-# TODO Properly integrate this function
-def count_tokens(messages: list[dict], model: str = "gpt-4") -> int:
-    """
-    Counts the number of tokens in a list of messages.
-    This is an estimation, as the exact token count can vary by model.
-    """
-    try:
-        # Note: "cl100k_base" is a safe general-purpose default
-        encoding = tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        # Fallback if the encoding is not found
-        encoding = tiktoken.encoding_for_model(model)
-        
-    num_tokens = 0
-    for message in messages:
-        # Every message adds a few tokens for formatting (role, content, etc.)
-        num_tokens += 4 
-        for key, value in message.items():
-            num_tokens += len(encoding.encode(value))
-    
-    # Every reply is primed with <|start|>assistant<|message|>
-    num_tokens += 3  
-    return num_tokens
+logger = logging.getLogger(__name__)
 
-# TODO Properly integrate this function
-def trim_messages(messages: list[dict], max_tokens: int) -> list[dict]:
-    """
-    Trims the message history to fit within the token limit.
-    It preserves the first message (usually the system prompt) and
-    removes messages from the beginning of the conversation.
-    """
-    while count_tokens(messages) > max_tokens:
-        if len(messages) > 1:
-            # Remove the oldest message after the system prompt
-            messages.pop(1) 
-        else:
-            # Cannot trim further
-            break
-    return messages
 
 class OllamaClient:
     """Client for interacting with local Ollama API."""
@@ -56,6 +19,20 @@ class OllamaClient:
         """
         self.base_url = base_url.rstrip('/')
         self.session = requests.Session()
+        self.model_context_sizes = {
+            # Common Ollama models and their approximate context sizes
+            "llama3.2:3b": 4096,
+            "llama3.2:1b": 2048,
+            "llama3.1:8b": 8192,
+            "codellama:7b": 4096,
+            "mistral:7b": 8192,
+            "gemma2:2b": 8192,
+            "phi3:mini": 4096,
+            "gemma3:4b": 124000,
+
+            # Default fallback
+            "default": 4096
+        }
     
     def is_available(self) -> bool:
         """Check if Ollama server is running and accessible."""
@@ -74,8 +51,118 @@ class OllamaClient:
             return [model['name'] for model in data.get('models', [])]
         except requests.exceptions.RequestException:
             return []
-
-    # TODO Properly integrate this function
+    
+    def get_model_context_size(self, model: str) -> int:
+        """Get the context window size for a model.
+        
+        Args:
+            model: Model name
+            
+        Returns:
+            Context size in tokens (estimated)
+        """
+        # Try to get from our known models first
+        for known_model, size in self.model_context_sizes.items():
+            if known_model in model.lower():
+                return size
+        
+        # Try to get from API
+        try:
+            details = self.get_model_details(model)
+            # Some models report context_length in their details
+            if 'context_length' in details:
+                return details['context_length']
+        except:
+            pass
+        
+        # Default fallback
+        return self.model_context_sizes["default"]
+    
+    def count_tokens(self, text: str, model: str = None) -> int:
+        """
+        Estimate token count for text. 
+        Simple estimation: ~4 characters per token for English text.
+        
+        Args:
+            text: Text to count tokens for
+            model: Model name (unused but kept for compatibility)
+            
+        Returns:
+            Estimated token count
+        """
+        # Simple estimation: average of 4 characters per token
+        # This is a rough approximation but works reasonably well for English
+        return len(text) // 4
+    
+    def count_messages_tokens(self, messages: List[Dict[str, str]]) -> int:
+        """Count tokens in a list of messages.
+        
+        Args:
+            messages: List of message dictionaries
+            
+        Returns:
+            Total estimated token count
+        """
+        total_tokens = 0
+        for message in messages:
+            # Add tokens for message structure (role, etc.)
+            total_tokens += 4
+            # Add content tokens
+            for value in message.values():
+                if isinstance(value, str):
+                    total_tokens += self.count_tokens(value)
+        return total_tokens
+    
+    def trim_to_context_window(self, text: str, max_tokens: int) -> str:
+        """Trim text to fit within token limit.
+        
+        Args:
+            text: Text to trim
+            max_tokens: Maximum token count
+            
+        Returns:
+            Trimmed text
+        """
+        estimated_chars = max_tokens * 4  # Reverse estimation
+        if len(text) > estimated_chars:
+            return text[:estimated_chars] + "...[truncated]"
+        return text
+    
+    def split_into_chunks(self, text: str, chunk_size: int) -> List[str]:
+        """Split text into chunks that fit within token limit.
+        
+        Args:
+            text: Text to split
+            chunk_size: Maximum tokens per chunk
+            
+        Returns:
+            List of text chunks
+        """
+        max_chars = chunk_size * 4  # Convert tokens to approximate characters
+        chunks = []
+        
+        # Split by lines first to maintain structure
+        lines = text.split('\n')
+        current_chunk = []
+        current_size = 0
+        
+        for line in lines:
+            line_size = len(line) + 1  # +1 for newline
+            if current_size + line_size > max_chars and current_chunk:
+                # Save current chunk and start new one
+                chunks.append('\n'.join(current_chunk))
+                current_chunk = [line]
+                current_size = line_size
+            else:
+                current_chunk.append(line)
+                current_size += line_size
+        
+        # Add remaining chunk
+        if current_chunk:
+            chunks.append('\n'.join(current_chunk))
+        
+        return chunks
+    
     def get_model_details(self, model: str) -> Dict:
         """Get details for a specific model."""
         try:
@@ -87,8 +174,7 @@ class OllamaClient:
             return response.json()
         except requests.exceptions.RequestException:
             return {}
-        
-    # Add this method inside your OllamaClient class
+    
     def pull_model(self, model: str) -> bool:
         """Pull a model if it's not available locally."""
         try:
@@ -109,7 +195,7 @@ class OllamaClient:
                         return True
             return True
         except requests.exceptions.RequestException as e:
-            print(f"Error pulling model: {e}")
+            logger.error(f"Error pulling model: {e}")
             return False
     
     def chat_stream(self, model: str, messages: List[Dict[str, str]], 
