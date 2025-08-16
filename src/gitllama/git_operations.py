@@ -1,7 +1,7 @@
 """
-GitLlama - Git Operations Module
+GitLlama - Git Operations Module with AI Integration
 
-Simple git automation: clone, branch, change, commit, push.
+AI-powered git automation: clone, branch, change, commit, push.
 """
 
 import os
@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,12 +21,19 @@ class GitOperationError(Exception):
 
 
 class GitAutomator:
-    """Simple git automation class."""
+    """AI-powered git automation class."""
     
-    def __init__(self, working_dir: Optional[str] = None):
+    def __init__(self, working_dir: Optional[str] = None, ai_coordinator=None):
+        """Initialize the GitAutomator with optional AI coordinator.
+        
+        Args:
+            working_dir: Optional working directory path
+            ai_coordinator: Optional AICoordinator instance for AI-powered operations
+        """
         self.working_dir = Path(working_dir) if working_dir else Path(tempfile.mkdtemp())
         self.repo_path: Optional[Path] = None
         self.original_cwd = os.getcwd()
+        self.ai_coordinator = ai_coordinator
         
     def __enter__(self):
         return self
@@ -84,28 +91,43 @@ class GitAutomator:
     
     def make_changes(self) -> list:
         """
-        Make a simple change to the repository.
-        
-        TODO: Expand this method to add your custom change logic.
+        Make changes to the repository using AI decisions.
+        Falls back to simple change if no AI coordinator.
         """
         if not self.repo_path:
             raise GitOperationError("No repository cloned. Call clone_repository first.")
         
         logger.info("Making changes to repository")
         
-        # Simple default change - create a file
-        filename = "gitllama_was_here.txt"
-        content = "This file was created by GitLlama automation tool."
-        
-        file_path = self.repo_path / filename
-        with open(file_path, 'w') as f:
-            f.write(content)
-        
-        logger.info(f"Created file: {filename}")
-        return [filename]
+        if self.ai_coordinator:
+            # AI-powered changes
+            logger.info("Using AI to determine changes")
+            
+            # Step 1: Explore the repository
+            project_info = self.ai_coordinator.explore_repository(self.repo_path)
+            logger.info(f"AI understanding: {project_info}")
+            
+            # Step 2: Decide on file operations
+            operations = self.ai_coordinator.decide_file_operations(self.repo_path, project_info)
+            
+            # Step 3: Execute the operations
+            modified_files = self.ai_coordinator.execute_file_operations(self.repo_path, operations)
+            
+            return modified_files
+        else:
+            # Simple default change - create a file
+            filename = "gitllama_was_here.txt"
+            content = "This file was created by GitLlama automation tool."
+            
+            file_path = self.repo_path / filename
+            with open(file_path, 'w') as f:
+                f.write(content)
+            
+            logger.info(f"Created file: {filename}")
+            return [filename]
     
     def commit_changes(self, message: Optional[str] = None) -> str:
-        """Commit changes to the repository."""
+        """Commit changes to the repository with AI-generated or custom message."""
         if not self.repo_path:
             raise GitOperationError("No repository cloned. Call clone_repository first.")
         
@@ -116,7 +138,20 @@ class GitAutomator:
         
         # Create commit message
         if not message:
-            message = "Automated changes by GitLlama"
+            if self.ai_coordinator and hasattr(self.ai_coordinator, 'context_window'):
+                # Get AI-generated commit message based on operations
+                operations = None
+                for ctx in reversed(self.ai_coordinator.context_window):
+                    if ctx.get('type') == 'file_operation':
+                        operations = [ctx.get('operation')]
+                        break
+                
+                if operations:
+                    message = self.ai_coordinator.generate_commit_message(operations)
+                else:
+                    message = "Automated changes by GitLlama"
+            else:
+                message = "Automated changes by GitLlama"
         
         # Commit changes
         self._run_git_command(['git', 'commit', '-m', message])
@@ -144,22 +179,34 @@ class GitAutomator:
         
         return push_output
     
-    def run_full_workflow(self, git_url: str, branch_name: str = "gitllama-automation", 
+    def run_full_workflow(self, git_url: str, branch_name: Optional[str] = None, 
                          commit_message: Optional[str] = None) -> dict:
-        """Run the complete git automation workflow."""
-        logger.info("Starting GitLlama workflow")
+        """Run the complete git automation workflow with AI integration."""
+        logger.info("Starting AI-powered GitLlama workflow")
         
         try:
             # Step 1: Clone repository
             repo_path = self.clone_repository(git_url)
             
-            # Step 2: Checkout branch
+            # AI Step: Explore and understand the project
+            project_info = {}
+            if self.ai_coordinator:
+                project_info = self.ai_coordinator.explore_repository(repo_path)
+                logger.info(f"AI Project Analysis: {project_info}")
+            
+            # Step 2: Checkout branch (AI decides if coordinator available)
+            if not branch_name and self.ai_coordinator:
+                branch_name = self.ai_coordinator.decide_branch_name(project_info)
+                logger.info(f"AI selected branch name: {branch_name}")
+            elif not branch_name:
+                branch_name = "gitllama-automation"
+            
             self.checkout_branch(branch_name)
             
-            # Step 3: Make changes
+            # Step 3: Make changes (AI-powered if coordinator available)
             modified_files = self.make_changes()
             
-            # Step 4: Commit changes
+            # Step 4: Commit changes (AI generates message if coordinator available)
             commit_hash = self.commit_changes(commit_message)
             
             # Step 5: Push changes
@@ -167,7 +214,7 @@ class GitAutomator:
             
             logger.info("Workflow completed successfully")
             
-            return {
+            result = {
                 "success": True,
                 "repo_path": str(repo_path),
                 "branch": branch_name,
@@ -175,6 +222,11 @@ class GitAutomator:
                 "commit_hash": commit_hash[:8],
                 "message": "Workflow completed successfully"
             }
+            
+            if project_info:
+                result["ai_analysis"] = project_info
+            
+            return result
             
         except Exception as e:
             logger.error(f"Workflow failed: {e}")
