@@ -21,11 +21,11 @@ def create_parser() -> argparse.ArgumentParser:
 Examples:
   gitllama https://github.com/user/repo.git
   gitllama https://github.com/user/repo.git --branch my-feature  
-  gitllama https://github.com/user/repo.git --message "Custom commit message"
   gitllama https://github.com/user/repo.git --model llama3:8b
   gitllama https://github.com/user/repo.git --verbose
 
 GitLlama uses AI to intelligently analyze repositories and make improvements.
+All decisions (commits, files, messages) are handled by AI.
 Requires Ollama to be running with a compatible model.
         """
     )
@@ -41,10 +41,6 @@ Requires Ollama to be running with a compatible model.
         help="Branch name to use (AI will decide if not specified)"
     )
     
-    parser.add_argument(
-        "--message", "-m",
-        help="Custom commit message (AI will generate if not specified)"
-    )
     
     parser.add_argument(
         "--model",
@@ -103,8 +99,7 @@ def main() -> int:
         with GitAutomator(ai_coordinator=ai_coordinator) as automator:
             results = automator.run_full_workflow(
                 git_url=args.git_url,
-                branch_name=args.branch,
-                commit_message=args.message
+                branch_name=args.branch
             )
         
         # Print results

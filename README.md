@@ -48,16 +48,10 @@ gitllama https://github.com/user/repo.git
 gitllama https://github.com/user/repo.git --model llama3:8b
 ```
 
-### Manual branch name (AI still handles other decisions):
+### With specific branch (AI handles all other decisions):
 
 ```bash
 gitllama https://github.com/user/repo.git --branch feature/my-improvement
-```
-
-### Manual commit message:
-
-```bash
-gitllama https://github.com/user/repo.git --message "feat: add new feature"
 ```
 
 ### Verbose mode (see all AI decisions):

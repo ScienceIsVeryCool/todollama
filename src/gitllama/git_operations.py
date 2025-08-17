@@ -183,8 +183,8 @@ class GitAutomator:
             logger.info(f"Created file: {filename}")
             return [filename]
     
-    def commit_changes(self, message: Optional[str] = None) -> str:
-        """Commit changes to the repository with AI-generated or custom message."""
+    def commit_changes(self) -> str:
+        """Commit changes to the repository with AI-generated commit message."""
         if not self.repo_path:
             raise GitOperationError("No repository cloned. Call clone_repository first.")
         
@@ -207,22 +207,21 @@ class GitAutomator:
             logger.warning("No staged changes to commit after git add")
             return "no-changes"
         
-        # Create commit message
-        if not message:
-            if self.ai_coordinator and hasattr(self.ai_coordinator, 'context_window'):
-                # Get AI-generated commit message based on operations
-                operations = None
-                for ctx in reversed(self.ai_coordinator.context_window):
-                    if ctx.get('type') == 'file_operation':
-                        operations = [ctx.get('operation')]
-                        break
-                
-                if operations:
-                    message = self.ai_coordinator.generate_commit_message(operations)
-                else:
-                    message = "Automated changes by GitLlama"
+        # Generate AI commit message (always)
+        if self.ai_coordinator and hasattr(self.ai_coordinator, 'context_window'):
+            # Get AI-generated commit message based on operations
+            operations = None
+            for ctx in reversed(self.ai_coordinator.context_window):
+                if ctx.get('type') == 'file_operation':
+                    operations = [ctx.get('operation')]
+                    break
+            
+            if operations:
+                message = self.ai_coordinator.generate_commit_message(operations)
             else:
-                message = "Automated changes by GitLlama"
+                message = "feat: automated improvements by GitLlama AI"
+        else:
+            message = "feat: automated improvements by GitLlama AI"
         
         # Commit changes
         self._run_git_command(['git', 'commit', '-m', message])
@@ -246,14 +245,17 @@ class GitAutomator:
             result = self._run_git_command(['git', 'branch', '--show-current'])
             branch = result.stdout.strip()
         
+        # Ensure branch is not None
+        if not branch:
+            branch = "main"
+        
         # Push changes
         result = self._run_git_command(['git', 'push', 'origin', branch])
         logger.info("🔧 Git: Successfully pushed changes")
         
         return branch
     
-    def run_full_workflow(self, git_url: str, branch_name: Optional[str] = None, 
-                         commit_message: Optional[str] = None) -> dict:
+    def run_full_workflow(self, git_url: str, branch_name: Optional[str] = None) -> dict:
         """Run the complete AI-powered git automation workflow."""
         logger.info("Starting AI-powered GitLlama workflow")
         
@@ -299,7 +301,7 @@ class GitAutomator:
                 # Fallback to traditional method if AI workflow didn't work
                 logger.info("Falling back to traditional file operations")
                 modified_files = self.make_changes()
-                commit_hash = self.commit_changes(commit_message)
+                commit_hash = self.commit_changes()  # AI generates message
                 
                 if commit_hash != "no-changes":
                     self.push_changes(branch=branch_name)
