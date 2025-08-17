@@ -467,6 +467,10 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
         with open(html_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
+        # Also save as latest.html for easy access
+        latest_path = self.output_dir / "latest.html"
+        self._save_as_latest(html_content, latest_path, html_filename)
+        
         # Generate companion Markdown report
         md_content = self._render_markdown_template(template_data)
         md_filename = f"gitllama_report_{self.timestamp}.md"
@@ -481,6 +485,12 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
         if self.logs:
             logs_path = self._generate_logs_report()
             logger.info(f"Detailed logs report: {logs_path}")
+            
+            # Also save logs as latest_logs.html for easy access
+            latest_logs_path = self.output_dir / "latest_logs.html"
+            with open(logs_path, 'r', encoding='utf-8') as f:
+                logs_content = f.read()
+            self._save_as_latest(logs_content, latest_logs_path, logs_path.name)
         
         # Auto-open in browser
         if auto_open:
@@ -537,6 +547,67 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
             f.write(html_content)
         
         return logs_path
+    
+    def _save_as_latest(self, html_content: str, latest_path: Path, original_filename: str):
+        """Save report as latest.html with embedded original filename for recovery."""
+        # Extract the timestamp from the original filename
+        timestamp_match = original_filename.replace('gitllama_report_', '').replace('.html', '')
+        
+        # Create metadata comment to embed in HTML
+        metadata_comment = f"""<!--
+GitLlama Latest Report Metadata
+===============================
+Original Filename: {original_filename}
+Timestamp: {timestamp_match}
+Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+This file is a copy of the timestamped report for easy access.
+To recover the original filename, extract from this comment or use:
+grep -o 'Original Filename: [^"]*' latest.html
+===============================
+-->"""
+        
+        # Insert metadata comment right after the opening <html> tag
+        if '<html' in html_content:
+            # Find the position after the <html> tag
+            html_start = html_content.find('<html')
+            html_end = html_content.find('>', html_start) + 1
+            
+            # Insert metadata comment
+            modified_content = (
+                html_content[:html_end] + 
+                '\n' + metadata_comment + '\n' + 
+                html_content[html_end:]
+            )
+        else:
+            # Fallback: prepend comment to the beginning
+            modified_content = metadata_comment + '\n' + html_content
+        
+        # Write the latest.html file
+        with open(latest_path, 'w', encoding='utf-8') as f:
+            f.write(modified_content)
+        
+        logger.info(f"Saved latest report: {latest_path} (original: {original_filename})")
+    
+    def get_original_filename_from_latest(self, latest_path: Path) -> str:
+        """Extract the original filename from a latest.html file."""
+        try:
+            with open(latest_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Look for the metadata comment
+            if 'Original Filename:' in content:
+                import re
+                match = re.search(r'Original Filename: ([^\n\r]+)', content)
+                if match:
+                    return match.group(1).strip()
+            
+            # Fallback: couldn't find metadata
+            return "unknown_timestamp.html"
+            
+        except Exception as e:
+            logger.warning(f"Could not extract original filename from {latest_path}: {e}")
+            return "unknown_timestamp.html"
     
     def _render_html_template(self, data: Dict[str, Any]) -> str:
         """Render the HTML template with data."""
@@ -765,7 +836,7 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
                 <div style="color: #4b5563; line-height: 1.6;">{{ executive_summary.log_summary }}</div>
                 {% if executive_summary.total_logs_captured %}
                 <div style="margin-top: 0.75rem;">
-                    <a href="gitllama_logs_{{ timestamp }}.html" target="_blank" style="color: #667eea; text-decoration: none; font-weight: 600; font-size: 0.9rem;">
+                    <a href="latest_logs.html" target="_blank" style="color: #667eea; text-decoration: none; font-weight: 600; font-size: 0.9rem;">
                         📋 View Detailed Logs ({{ executive_summary.total_logs_captured }} entries) →
                     </a>
                 </div>
@@ -1475,7 +1546,7 @@ No file operations recorded.
             <p>Repository: {{ repo_url }}</p>
         </div>
 
-        <a href="gitllama_report_{{ timestamp }}.html" class="back-link">← Back to Main Report</a>
+        <a href="latest.html" class="back-link">← Back to Main Report</a>
 
         {% if log_summary %}
         <div class="summary-section">

@@ -248,8 +248,9 @@ class BranchAnalyzer:
                     f"Found TODO.md in {sum(1 for t in todo_contents.values() if t['exists'])} branches."
                 )
                 
-                # Add TODO comparison to branch analysis if there are interesting findings
-                if len(branches_with_todos) > 1:
+                # Add TODO comparison to branch analysis if there are any findings
+                # Show analysis even for single branch to provide visibility into TODO discovery
+                if branches_with_todos or any(t['exists'] for t in todo_contents.values()):
                     self.report_generator.add_branch_todo_analysis(
                         todo_contents, comparison_result, branches_with_todos
                     )
@@ -284,7 +285,41 @@ class BranchAnalyzer:
         
         if len(branches_with_todos) == 1:
             branch = list(branches_with_todos.keys())[0]
-            return f"Only one TODO.md file found in branch '{branch}'. No comparison possible."
+            todo_data = branches_with_todos[branch]
+            
+            # Generate analysis for single TODO.md file
+            single_todo_prompt = f"""Analyze the TODO.md file found in the '{branch}' branch. Provide insights in this EXACT format:
+
+**🎯 CONTENT ANALYSIS:**
+[What are the main topics and priorities covered in this TODO file?]
+
+**📊 PLANNING QUALITY:**
+[How well-organized and detailed is this TODO file? Is it comprehensive?]
+
+**📈 DEVELOPMENT STAGE:**
+[What can you infer about the project's development stage from this TODO content?]
+
+**🎯 ACTIONABILITY:**
+[How actionable and current do these TODO items appear to be?]
+
+**⚡ KEY INSIGHTS:**
+[What are the most important strategic insights from this TODO analysis?]
+
+TODO.md CONTENT TO ANALYZE:
+=== BRANCH: {branch} ===
+Length: {todo_data['length']} characters
+Content:
+{todo_data['content'][:1500] + ("..." if len(todo_data['content']) > 1500 else "")}
+
+Provide specific insights about this project's planning and development focus:"""
+            
+            messages = [{"role": "user", "content": single_todo_prompt}]
+            response = ""
+            
+            for chunk in self.client.chat_stream(self.model, messages):
+                response += chunk
+            
+            return response.strip()
         
         # Build context for AI comparison
         context_parts = [
