@@ -1,10 +1,11 @@
 # GitLlama 🦙🤖
 
-AI-powered git automation tool with deep project understanding. GitLlama uses hierarchical AI analysis to intelligently clone, branch, change, commit, and push your code.
+AI-powered git automation tool with deep project understanding. GitLlama v0.3.0 uses hierarchical AI analysis and intelligent branch selection to clone, analyze, optimize, commit, and push your code.
 
 ## 🌟 Key Features
 
 - **🧠 Deep Project Analysis**: Hierarchical summarization system that understands entire codebases
+- **🌿 Intelligent Branch Selection**: AI analyzes existing branches and intelligently decides whether to reuse or create new ones
 - **📊 Smart Chunking**: Automatically splits large repositories to fit AI context windows
 - **🔄 Merge-Sort Summarization**: Combines multiple analyses into comprehensive understanding
 - **🎯 Intelligent Decision Making**: AI makes context-aware decisions at every step
@@ -30,7 +31,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama serve
 
 # Pull a model (recommended for this tool)
-ollama pull llama3.2:3b
+ollama pull gemma3:4b
 ```
 
 ## 💻 Usage
@@ -84,11 +85,12 @@ GitLlama uses a sophisticated multi-step process to understand and improve repos
 
 ### 2. **Intelligent Workflow** 🤖
    1. **Clones the repository**
-   2. **AI explores the project** - Deep multi-level analysis
-   3. **AI decides on branch name** - Context-aware and meaningful
-   4. **AI makes intelligent changes** - Based on project understanding
-   5. **AI generates commit message** - Follows conventional commit format
-   6. **Pushes to remote**
+   2. **AI explores the project** - Deep multi-level analysis across all branches
+   3. **AI analyzes existing branches** - Evaluates reuse potential and compatibility
+   4. **AI decides on branch strategy** - Smart selection between reusing existing or creating new
+   5. **AI makes intelligent changes** - Based on comprehensive project understanding
+   6. **AI generates commit message** - Follows conventional commit format
+   7. **Pushes to remote**
 
 ### Example Analysis Output:
 ```
@@ -117,13 +119,47 @@ STEP 5: FORMAT RESULTS
 Repository analysis complete!
 ```
 
+### 3. **Intelligent Branch Selection** 🌿
+
+GitLlama now features sophisticated branch analysis and selection:
+
+```
+Starting intelligent branch selection process
+============================================================
+STEP 1: ANALYZE EXISTING BRANCHES
+  Analyzing purposes of 3 branches
+    Branch 'feature/auth-system': Production-ready authentication system
+    Branch 'wip-database': Work-in-progress database optimization
+    Branch 'docs/api': API documentation updates
+STEP 2: EVALUATE REUSE POTENTIAL
+  Evaluating reuse potential for existing branches
+    wip-database: score=45, reasons=work-in-progress branch, matching project type
+    feature/auth-system: score=35, reasons=feature branch, matching technologies
+STEP 3: MAKE BRANCH DECISION
+  Making branch selection decision
+🤖 AI: Deciding branch selection strategy with 2 candidates
+    Decision: REUSE - High compatibility with existing WIP branch
+STEP 4: GENERATE/SELECT BRANCH NAME
+  Finalizing branch selection
+    Selected existing branch: wip-database
+============================================================
+Branch selection complete: wip-database
+```
+
+#### Branch Selection Features:
+- **🔍 Multi-branch Analysis**: Examines all branches in the repository
+- **🎯 Smart Scoring**: Evaluates compatibility based on project type, technologies, and purpose
+- **🔄 Reuse Preference**: Strongly favors reusing existing branches (80% bias)
+- **🏗️ Branch Classification**: Identifies feature, fix, docs, and WIP branches
+- **⚙️ Intelligent Fallback**: Creates new branches with meaningful names when needed
+
 ## 🐍 Python API
 
 ```python
 from gitllama import GitAutomator, AICoordinator
 
 # With AI - Full intelligent automation
-ai = AICoordinator(model="llama3.2:3b")
+ai = AICoordinator(model="gemma3:4b")
 with GitAutomator(ai_coordinator=ai) as automator:
     results = automator.run_full_workflow(
         git_url="https://github.com/user/repo.git"
@@ -159,13 +195,16 @@ gitllama/
 ├── cli.py              # Command-line interface
 ├── git_operations.py   # Git automation logic
 ├── ai_coordinator.py   # AI workflow coordination
-├── project_analyzer.py # Hierarchical project analysis (NEW!)
+├── project_analyzer.py # Hierarchical project analysis
+├── branch_analyzer.py  # Intelligent branch selection (NEW!)
+├── config.py           # Configuration and logging setup
 └── ollama_client.py    # Ollama API integration
 ```
 
 ### Key Components:
 
 - **ProjectAnalyzer**: Handles the 5-step hierarchical analysis process
+- **BranchAnalyzer**: Intelligent branch selection with 4-step decision pipeline (NEW!)
 - **AICoordinator**: Orchestrates AI decisions throughout the workflow
 - **GitAutomator**: Manages git operations with optional AI integration
 - **OllamaClient**: Interfaces with local Ollama models
@@ -174,7 +213,7 @@ gitllama/
 
 The tool works with any Ollama model. Recommended models:
 
-- `llama3.2:3b` - Fast and efficient (default)
+- `gemma3:4b` - Fast and efficient (default)
 - `llama3.2:1b` - Ultra-fast for simple tasks
 - `codellama:7b` - Optimized for code understanding
 - `mistral:7b` - Good general purpose
@@ -212,7 +251,7 @@ The AI provides multi-level insights:
     "total_tokens": 45000,
     "chunks_created": 12,
     "context_window": 4096,
-    "model": "llama3.2:3b"
+    "model": "gemma3:4b"
   }
 }
 ```

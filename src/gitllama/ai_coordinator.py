@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class AICoordinator:
     """Coordinates AI decisions throughout the git workflow"""
     
-    def __init__(self, model: str = "llama3.2:3b", base_url: str = "http://localhost:11434"):
+    def __init__(self, model: str = "gemma3:4b", base_url: str = "http://localhost:11434"):
         self.model = model
         self.client = OllamaClient(base_url)
         self.context_window = []

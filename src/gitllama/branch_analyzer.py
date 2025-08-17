@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class BranchAnalyzer:
     """Analyzes git branches and makes intelligent branch selection decisions"""
     
-    def __init__(self, client: OllamaClient, model: str = "llama3.2:3b"):
+    def __init__(self, client: OllamaClient, model: str = "gemma3:4b"):
         """Initialize the Branch Analyzer.
         
         Args:

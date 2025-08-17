@@ -20,7 +20,7 @@ def create_parser() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   gitllama https://github.com/user/repo.git
-  gitllama https://github.com/user/repo.git --model llama3.2:3b
+  gitllama https://github.com/user/repo.git --model gemma3:4b
   gitllama https://github.com/user/repo.git --branch my-feature
   gitllama https://github.com/user/repo.git --message "Custom commit message"
   gitllama https://github.com/user/repo.git --no-ai  # Disable AI
@@ -45,8 +45,8 @@ Examples:
     
     parser.add_argument(
         "--model",
-        default="llama3.2:3b",
-        help="Ollama model to use for AI decisions (default: llama3.2:3b)"
+        default="gemma3:4b",
+        help="Ollama model to use for AI decisions (default: gemma3:4b)"
     )
     
     parser.add_argument(

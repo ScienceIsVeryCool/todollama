@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class ProjectAnalyzer:
     """Analyzes repositories using hierarchical summarization"""
     
-    def __init__(self, client: OllamaClient, model: str = "llama3.2:3b"):
+    def __init__(self, client: OllamaClient, model: str = "gemma3:4b"):
         """Initialize the Project Analyzer.
         
         Args:
