@@ -67,12 +67,19 @@ class BranchAnalyzer:
         branch_purposes = self._step1_analyze_branch_purposes(branch_summaries)
         
         # ============================================================
+        # STEP 1.5: ANALYZE TODO.md FILES ACROSS BRANCHES
+        # Compare TODO.md content between branches
+        # ============================================================
+        logger.info("STEP 1.5: ANALYZE TODO.md FILES ACROSS BRANCHES")
+        todo_analysis = self._step1_5_analyze_todo_files(repo_path, list(branch_summaries.keys()))
+        
+        # ============================================================
         # STEP 2: EVALUATE REUSE POTENTIAL
         # Determine if any existing branch is suitable for our work
         # ============================================================
         logger.info("STEP 2: EVALUATE REUSE POTENTIAL")
         reuse_candidates = self._step2_evaluate_reuse_potential(
-            branch_purposes, project_info
+            branch_purposes, project_info, todo_analysis
         )
         
         # ============================================================
@@ -164,11 +171,190 @@ class BranchAnalyzer:
         return branch_purposes
     
     # ============================================================
+    # STEP 1.5: ANALYZE TODO.md FILES ACROSS BRANCHES
+    # ============================================================
+    
+    def _step1_5_analyze_todo_files(self, repo_path: Path, branches: List[str]) -> Dict[str, Dict]:
+        """STEP 1.5: Analyze TODO.md files across all branches and compare them.
+        
+        This step checks for TODO.md files in the project root of each branch
+        and uses AI to compare their content and priorities.
+        
+        Args:
+            repo_path: Path to the repository
+            branches: List of branch names to analyze
+            
+        Returns:
+            Dictionary with TODO analysis results
+        """
+        logger.info(f"  Analyzing TODO.md files across {len(branches)} branches")
+        
+        # Store current branch to restore later
+        current_branch = self._get_current_branch()
+        todo_contents = {}
+        
+        try:
+            # Collect TODO.md content from each branch
+            for branch in branches:
+                logger.info(f"    Checking TODO.md in branch '{branch}'")
+                
+                try:
+                    # Switch to branch
+                    subprocess.run(
+                        ['git', 'checkout', branch],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    
+                    # Check for TODO.md in project root
+                    todo_path = repo_path / "TODO.md"
+                    if todo_path.exists():
+                        with open(todo_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                        todo_contents[branch] = {
+                            'exists': True,
+                            'content': content,
+                            'length': len(content)
+                        }
+                        logger.info(f"      Found TODO.md ({len(content)} chars)")
+                    else:
+                        todo_contents[branch] = {
+                            'exists': False,
+                            'content': '',
+                            'length': 0
+                        }
+                        logger.info(f"      No TODO.md found")
+                        
+                except subprocess.CalledProcessError as e:
+                    logger.warning(f"Could not checkout branch {branch}: {e}")
+                    todo_contents[branch] = {
+                        'exists': False,
+                        'content': '',
+                        'length': 0,
+                        'error': str(e)
+                    }
+            
+            # Generate AI comparison if we have TODO.md files
+            comparison_result = self._generate_todo_comparison(todo_contents)
+            branches_with_todos = [b for b, t in todo_contents.items() if t['exists']]
+            
+            # Hook into report generator
+            if self.report_generator:
+                self.report_generator.add_timeline_event(
+                    "TODO.md Analysis",
+                    f"Analyzed TODO.md files across {len(branches)} branches. "
+                    f"Found TODO.md in {sum(1 for t in todo_contents.values() if t['exists'])} branches."
+                )
+                
+                # Add TODO comparison to branch analysis if there are interesting findings
+                if len(branches_with_todos) > 1:
+                    self.report_generator.add_branch_todo_analysis(
+                        todo_contents, comparison_result, branches_with_todos
+                    )
+            
+            return {
+                'todo_contents': todo_contents,
+                'comparison': comparison_result,
+                'has_todos': any(t['exists'] for t in todo_contents.values()),
+                'branches_with_todos': [b for b, t in todo_contents.items() if t['exists']]
+            }
+            
+        finally:
+            # Restore original branch
+            try:
+                subprocess.run(
+                    ['git', 'checkout', current_branch],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+            except subprocess.CalledProcessError:
+                logger.warning(f"Could not restore original branch {current_branch}")
+    
+    def _generate_todo_comparison(self, todo_contents: Dict[str, Dict]) -> str:
+        """Generate AI analysis comparing TODO.md files across branches."""
+        # Filter branches that have TODO.md files
+        branches_with_todos = {b: t for b, t in todo_contents.items() if t['exists']}
+        
+        if not branches_with_todos:
+            return "No TODO.md files found in any branch."
+        
+        if len(branches_with_todos) == 1:
+            branch = list(branches_with_todos.keys())[0]
+            return f"Only one TODO.md file found in branch '{branch}'. No comparison possible."
+        
+        # Build context for AI comparison
+        context_parts = [
+            f"Found TODO.md files in {len(branches_with_todos)} branches:",
+            ""
+        ]
+        
+        for branch, todo_data in branches_with_todos.items():
+            context_parts.extend([
+                f"=== BRANCH: {branch} ===",
+                f"Length: {todo_data['length']} characters",
+                f"Content:",
+                todo_data['content'][:1000] + ("..." if len(todo_data['content']) > 1000 else ""),
+                ""
+            ])
+        
+        context = "\n".join(context_parts)
+        
+        prompt = f"""Analyze and compare the TODO.md files found across different git branches. Provide detailed insights in this EXACT format:
+
+**🎯 PRIORITY ANALYSIS:**
+[How do the priorities and focus areas differ between branches? Which branch focuses on what aspects?]
+
+**🌿 BRANCH PURPOSE INSIGHTS:**
+[What can you infer about each branch's specific purpose and development stage from its TODO content?]
+
+**📊 COMPLETENESS COMPARISON:**
+[Which branch has the most comprehensive TODO list? Compare the depth and breadth of planning.]
+
+**📈 PROGRESS & MATURITY:**
+[Are there signs of progress, task completion, or development maturity across branches?]
+
+**🎯 SELECTION RECOMMENDATION:**
+[Which branch's TODO.md is most current, actionable, and suitable for continued development? Why?]
+
+**⚡ KEY DIFFERENCES:**
+[What are the most significant strategic differences between the TODO approaches?]
+
+BRANCH TODO.md FILES TO ANALYZE:
+{context}
+
+Provide specific, actionable insights that help with intelligent branch selection:"""
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = ""
+        
+        for chunk in self.client.chat_stream(self.model, messages):
+            response += chunk
+        
+        return response.strip()
+    
+    def _get_current_branch(self) -> str:
+        """Get the currently checked out branch name."""
+        try:
+            result = subprocess.run(
+                ['git', 'branch', '--show-current'],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError:
+            return "main"  # fallback
+    
+    # ============================================================
     # STEP 2: EVALUATE REUSE POTENTIAL
     # ============================================================
     
     def _step2_evaluate_reuse_potential(self, branch_purposes: Dict[str, Dict], 
-                                       project_info: Dict) -> List[Dict]:
+                                       project_info: Dict, todo_analysis: Dict[str, Dict]) -> List[Dict]:
         """STEP 2: Evaluate which branches could be reused.
         
         This step scores each branch for reuse potential.
@@ -236,6 +422,32 @@ class BranchAnalyzer:
                 if tech_overlap > 0:
                     score += min(tech_overlap * 5, 20)
                     reasons.append(f"{tech_overlap} matching technologies")
+            
+            # Check TODO.md compatibility and relevance
+            if todo_analysis.get('has_todos'):
+                todo_contents = todo_analysis.get('todo_contents', {})
+                if branch_name in todo_contents and todo_contents[branch_name]['exists']:
+                    # Branch has TODO.md - this indicates active planning
+                    score += 25
+                    reasons.append("has active TODO.md")
+                    
+                    # Check if it's the most comprehensive TODO
+                    branches_with_todos = todo_analysis.get('branches_with_todos', [])
+                    if len(branches_with_todos) > 1:
+                        # Compare TODO length/complexity with other branches
+                        this_todo_length = todo_contents[branch_name]['length']
+                        avg_todo_length = sum(todo_contents[b]['length'] for b in branches_with_todos) / len(branches_with_todos)
+                        
+                        if this_todo_length > avg_todo_length * 1.2:
+                            score += 10
+                            reasons.append("comprehensive TODO.md")
+                elif not any(todo_contents[b]['exists'] for b in todo_contents):
+                    # No TODO.md files anywhere - neutral
+                    pass
+                else:
+                    # Other branches have TODO.md but this one doesn't - slight penalty
+                    score -= 5
+                    reasons.append("missing TODO.md while others have it")
             
             if score > 0:
                 reuse_candidates.append({

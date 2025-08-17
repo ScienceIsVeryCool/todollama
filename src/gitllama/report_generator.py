@@ -30,6 +30,39 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 
+class LogCaptureHandler(logging.Handler):
+    """Custom logging handler to capture all logs during GitLlama execution."""
+    
+    def __init__(self, report_generator):
+        super().__init__()
+        self.report_generator = report_generator
+        self.setLevel(logging.DEBUG)
+        
+    def emit(self, record):
+        """Capture log record and store in report generator."""
+        try:
+            log_entry = {
+                "timestamp": datetime.fromtimestamp(record.created),
+                "level": record.levelname,
+                "logger": record.name,
+                "message": record.getMessage(),
+                "module": record.module,
+                "function": record.funcName,
+                "line": record.lineno,
+                "thread": record.thread,
+                "process": record.process
+            }
+            
+            # Add exception info if present
+            if record.exc_info:
+                log_entry["exception"] = self.format(record)
+            
+            self.report_generator.add_log_entry(log_entry)
+        except Exception:
+            # Don't let logging failures break the application
+            pass
+
+
 class ReportGenerator:
     """Generates professional HTML reports for GitLlama execution"""
     
@@ -67,8 +100,16 @@ class ReportGenerator:
             "model_info": {}
         }
         
+        # Log capture system
+        self.logs = []
+        self.log_handler = LogCaptureHandler(self)
+        self.log_summary = ""
+        
         # Create output directory
         self.output_dir.mkdir(exist_ok=True)
+        
+        # Setup log capture after initialization
+        self._setup_log_capture()
         
         logger.info(f"ReportGenerator initialized for {repo_url}")
     
@@ -155,6 +196,159 @@ class ReportGenerator:
         self.branch_analysis["action"] = action
         logger.debug(f"Set branch selection: {selected_branch} ({action})")
     
+    def add_branch_todo_analysis(self, todo_contents: Dict, comparison: str, branches_with_todos: List[str]):
+        """Add TODO.md analysis across branches."""
+        self.branch_analysis["todo_analysis"] = {
+            "todo_contents": todo_contents,
+            "ai_comparison": comparison,
+            "branches_with_todos": branches_with_todos,
+            "total_branches_analyzed": len(todo_contents),
+            "branches_with_todos_count": len(branches_with_todos)
+        }
+        logger.debug(f"Added TODO analysis for {len(branches_with_todos)} branches with TODO.md")
+    
+    def add_timeline_event(self, event_name: str, description: str):
+        """Add an event to the timeline."""
+        if "timeline_events" not in self.branch_analysis:
+            self.branch_analysis["timeline_events"] = []
+        
+        self.branch_analysis["timeline_events"].append({
+            "timestamp": datetime.now(),
+            "event": event_name,
+            "description": description
+        })
+        logger.debug(f"Added timeline event: {event_name}")
+    
+    def _setup_log_capture(self):
+        """Setup log capture for the entire GitLlama session."""
+        # Add handler to the gitllama root logger to capture all module logs
+        gitllama_logger = logging.getLogger('gitllama')
+        gitllama_logger.addHandler(self.log_handler)
+        
+        # Also add to src.gitllama for imports
+        src_gitllama_logger = logging.getLogger('src.gitllama')
+        src_gitllama_logger.addHandler(self.log_handler)
+    
+    def add_log_entry(self, log_entry: Dict):
+        """Add a log entry to the capture list."""
+        self.logs.append(log_entry)
+    
+    def _generate_log_summary(self):
+        """Generate AI summary of all captured logs."""
+        if not self.logs:
+            return "No logs captured during execution."
+        
+        # Try to get an AI client for log analysis
+        log_analysis_client = getattr(self, '_ai_client', None)
+        if not log_analysis_client:
+            return self._generate_basic_log_summary()
+        
+        # Group logs by level and module for analysis
+        log_stats = self._analyze_log_statistics()
+        
+        # Sample representative logs for AI analysis
+        sample_logs = self._sample_logs_for_analysis()
+        
+        prompt = f"""Analyze the GitLlama execution logs and provide a concise executive summary. Focus on:
+
+1. **Overall Execution Health**: Were there any critical issues or warnings?
+2. **Key Activities**: What major operations were performed?
+3. **Performance Insights**: Any notable timing or efficiency observations?
+4. **Error Analysis**: Summary of any errors or warnings and their impact
+5. **Success Indicators**: Evidence of successful completion
+
+LOG STATISTICS:
+- Total logs captured: {len(self.logs)}
+- Error logs: {log_stats['ERROR']}
+- Warning logs: {log_stats['WARNING']}
+- Info logs: {log_stats['INFO']}
+- Debug logs: {log_stats['DEBUG']}
+- Most active modules: {', '.join(log_stats['top_modules'][:5])}
+
+REPRESENTATIVE LOG SAMPLES:
+{sample_logs}
+
+Provide a concise 3-4 sentence executive summary focusing on execution health and key activities:"""
+
+        try:
+            # Use the AI client to analyze logs
+            messages = [{"role": "user", "content": prompt}]
+            response = ""
+            
+            for chunk in log_analysis_client.chat_stream("gemma3:4b", messages):
+                response += chunk
+            
+            return response.strip()
+        except Exception as e:
+            logger.warning(f"Failed to generate AI log summary: {e}")
+            return self._generate_basic_log_summary()
+    
+    def _analyze_log_statistics(self) -> Dict:
+        """Analyze log statistics for summary generation."""
+        stats = {"ERROR": 0, "WARNING": 0, "INFO": 0, "DEBUG": 0}
+        module_counts = {}
+        
+        for log in self.logs:
+            level = log.get("level", "UNKNOWN")
+            module = log.get("logger", "unknown")
+            
+            if level in stats:
+                stats[level] += 1
+            
+            module_counts[module] = module_counts.get(module, 0) + 1
+        
+        # Get top modules by activity
+        top_modules = sorted(module_counts.keys(), key=lambda x: module_counts[x], reverse=True)
+        stats["top_modules"] = top_modules
+        
+        return stats
+    
+    def _sample_logs_for_analysis(self, max_logs: int = 20) -> str:
+        """Sample representative logs for AI analysis."""
+        if len(self.logs) <= max_logs:
+            sampled = self.logs
+        else:
+            # Sample logs: all errors/warnings + representative info/debug
+            priority_logs = [log for log in self.logs if log.get("level") in ["ERROR", "WARNING"]]
+            other_logs = [log for log in self.logs if log.get("level") not in ["ERROR", "WARNING"]]
+            
+            # Take all priority logs + sample from others
+            remaining_slots = max_logs - len(priority_logs)
+            if remaining_slots > 0 and other_logs:
+                step = max(1, len(other_logs) // remaining_slots)
+                sampled = priority_logs + other_logs[::step][:remaining_slots]
+            else:
+                sampled = priority_logs[:max_logs]
+        
+        # Format logs for analysis
+        log_lines = []
+        for log in sampled:
+            timestamp = log["timestamp"].strftime("%H:%M:%S")
+            level = log["level"]
+            module = log["logger"]
+            message = log["message"][:100] + ("..." if len(log["message"]) > 100 else "")
+            log_lines.append(f"[{timestamp}] {level} {module}: {message}")
+        
+        return "\n".join(log_lines)
+    
+    def _generate_basic_log_summary(self) -> str:
+        """Generate basic log summary without AI analysis."""
+        stats = self._analyze_log_statistics()
+        
+        total_logs = len(self.logs)
+        errors = stats['ERROR']
+        warnings = stats['WARNING']
+        
+        if errors > 0:
+            health = "❌ Issues detected"
+        elif warnings > 0:
+            health = "⚠️ Minor warnings"
+        else:
+            health = "✅ Clean execution"
+        
+        return f"GitLlama execution completed with {total_logs} log entries. {health}. " \
+               f"Captured {errors} errors and {warnings} warnings across {len(stats['top_modules'])} modules."
+    
     def add_file_operation(self, operation: str, file_path: str, reason: str, 
                           content: str = "", diff: str = ""):
         """Add a file operation to the report."""
@@ -170,6 +364,10 @@ class ReportGenerator:
         self.file_operations.append(operation_data)
         logger.debug(f"Added file operation: {operation} {file_path}")
     
+    def set_ai_client(self, client):
+        """Set the AI client for log analysis."""
+        self._ai_client = client
+    
     def set_executive_summary(self, repo_path: str, branch: str, modified_files: List[str], 
                             commit_hash: str, success: bool, total_decisions: int):
         """Set the executive summary data."""
@@ -181,6 +379,9 @@ class ReportGenerator:
         if untracked_time > 0:
             self.metrics["processing_times"]["File Operations & Git"] = untracked_time
         
+        # Generate log summary
+        self.log_summary = self._generate_log_summary()
+        
         self.executive_summary = {
             "repo_url": self.repo_url,
             "repo_path": repo_path,
@@ -191,7 +392,9 @@ class ReportGenerator:
             "total_ai_decisions": total_decisions,
             "total_guided_questions": len(self.guided_questions),
             "total_file_operations": len(self.file_operations),
-            "execution_time": total_workflow_time
+            "execution_time": total_workflow_time,
+            "log_summary": self.log_summary,
+            "total_logs_captured": len(self.logs)
         }
         logger.debug("Set executive summary data")
     
@@ -274,6 +477,11 @@ class ReportGenerator:
         
         logger.info(f"Reports generated: {html_path}")
         
+        # Generate detailed logs report if we have logs
+        if self.logs:
+            logs_path = self._generate_logs_report()
+            logger.info(f"Detailed logs report: {logs_path}")
+        
         # Auto-open in browser
         if auto_open:
             try:
@@ -283,6 +491,52 @@ class ReportGenerator:
                 logger.warning(f"Could not auto-open report: {e}")
         
         return html_path
+    
+    def _generate_logs_report(self) -> Path:
+        """Generate detailed logs HTML report with filtering capabilities."""
+        logs_html = self._get_logs_html_template()
+        
+        # Organize logs by level and module
+        logs_by_level = {"ERROR": [], "WARNING": [], "INFO": [], "DEBUG": []}
+        logs_by_module = {}
+        
+        for log in self.logs:
+            level = log.get("level", "UNKNOWN")
+            module = log.get("logger", "unknown")
+            
+            if level in logs_by_level:
+                logs_by_level[level].append(log)
+            
+            if module not in logs_by_module:
+                logs_by_module[module] = []
+            logs_by_module[module].append(log)
+        
+        # Get statistics
+        stats = self._analyze_log_statistics()
+        
+        template_data = {
+            "timestamp": self.timestamp,
+            "generation_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "repo_url": self.repo_url,
+            "logs": self.logs,
+            "logs_by_level": logs_by_level,
+            "logs_by_module": logs_by_module,
+            "stats": stats,
+            "log_summary": self.log_summary
+        }
+        
+        # Render template
+        template = Template(logs_html)
+        html_content = template.render(**template_data)
+        
+        # Save logs HTML
+        logs_filename = f"gitllama_logs_{self.timestamp}.html"
+        logs_path = self.output_dir / logs_filename
+        
+        with open(logs_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        return logs_path
     
     def _render_html_template(self, data: Dict[str, Any]) -> str:
         """Render the HTML template with data."""
@@ -504,6 +758,20 @@ class ReportGenerator:
             {% if executive_summary.files_modified %}
             <p><strong>Modified Files:</strong> {{ executive_summary.files_modified|join(', ') }}</p>
             {% endif %}
+            
+            {% if executive_summary.log_summary %}
+            <div style="margin-top: 1.5rem; padding: 1rem; background: #f8fafc; border-radius: 8px; border-left: 4px solid #667eea;">
+                <h4 style="margin: 0 0 0.5rem 0; color: #374151;">🤖 AI Execution Analysis</h4>
+                <div style="color: #4b5563; line-height: 1.6;">{{ executive_summary.log_summary }}</div>
+                {% if executive_summary.total_logs_captured %}
+                <div style="margin-top: 0.75rem;">
+                    <a href="gitllama_logs_{{ timestamp }}.html" target="_blank" style="color: #667eea; text-decoration: none; font-weight: 600; font-size: 0.9rem;">
+                        📋 View Detailed Logs ({{ executive_summary.total_logs_captured }} entries) →
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
             </div>
         </div>
 
@@ -647,6 +915,96 @@ class ReportGenerator:
                 </div>
                 {% if not loop.last %}<span class="arrow">→</span>{% endif %}
                 {% endfor %}
+            </div>
+            {% endif %}
+            
+            {% if branch_analysis.todo_analysis %}
+            <h3>📋 TODO.md Cross-Branch Analysis</h3>
+            <div style="background: #f8fafc; padding: 1.5rem; border-radius: 12px; margin: 1rem 0; border: 1px solid #e2e8f0;">
+                
+                <!-- Summary Stats -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    <div style="background: white; padding: 1rem; border-radius: 8px; text-align: center; border-left: 4px solid #3b82f6;">
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #3b82f6;">{{ branch_analysis.todo_analysis.total_branches_analyzed }}</div>
+                        <div style="color: #64748b; font-size: 0.875rem;">Branches Scanned</div>
+                    </div>
+                    <div style="background: white; padding: 1rem; border-radius: 8px; text-align: center; border-left: 4px solid #10b981;">
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #10b981;">{{ branch_analysis.todo_analysis.branches_with_todos_count }}</div>
+                        <div style="color: #64748b; font-size: 0.875rem;">With TODO.md</div>
+                    </div>
+                    <div style="background: white; padding: 1rem; border-radius: 8px; text-align: center; border-left: 4px solid #f59e0b;">
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #f59e0b;">{{ (branch_analysis.todo_analysis.branches_with_todos_count / branch_analysis.todo_analysis.total_branches_analyzed * 100)|round|int }}%</div>
+                        <div style="color: #64748b; font-size: 0.875rem;">Planning Coverage</div>
+                    </div>
+                </div>
+
+                <!-- Branch Details -->
+                {% if branch_analysis.todo_analysis.todo_contents %}
+                <div style="margin-bottom: 1.5rem;">
+                    <h4 style="margin-bottom: 1rem; color: #374151;">📁 Branch-by-Branch TODO Status</h4>
+                    <div style="display: grid; gap: 0.75rem;">
+                        {% for branch_name, todo_data in branch_analysis.todo_analysis.todo_contents.items() %}
+                        <div style="background: white; padding: 1rem; border-radius: 8px; border: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                {% if todo_data.exists %}
+                                    <span style="color: #10b981; font-size: 1.25rem;">📋</span>
+                                    <div>
+                                        <div style="font-weight: 600; color: #374151;">{{ branch_name }}</div>
+                                        <div style="font-size: 0.875rem; color: #6b7280;">{{ todo_data.length }} characters • Active planning</div>
+                                    </div>
+                                {% else %}
+                                    <span style="color: #9ca3af; font-size: 1.25rem;">📄</span>
+                                    <div>
+                                        <div style="font-weight: 600; color: #9ca3af;">{{ branch_name }}</div>
+                                        <div style="font-size: 0.875rem; color: #9ca3af;">No TODO.md found</div>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            {% if todo_data.exists %}
+                                <div style="display: flex; gap: 0.5rem;">
+                                    {% if todo_data.length > 500 %}
+                                        <span style="background: #dcfce7; color: #166534; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">COMPREHENSIVE</span>
+                                    {% elif todo_data.length > 200 %}
+                                        <span style="background: #fef3c7; color: #92400e; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">MODERATE</span>
+                                    {% else %}
+                                        <span style="background: #fee2e2; color: #991b1b; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">MINIMAL</span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- AI Analysis -->
+                {% if branch_analysis.todo_analysis.ai_comparison and branch_analysis.todo_analysis.ai_comparison != "No TODO.md files found in any branch." %}
+                <div style="margin-top: 1.5rem;">
+                    <h4 style="margin-bottom: 1rem; color: #374151;">🤖 AI Strategic Analysis</h4>
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1.5rem; border-radius: 12px; color: white; box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);">
+                        <div style="background: rgba(255, 255, 255, 0.1); padding: 1.25rem; border-radius: 8px; white-space: pre-line; line-height: 1.6; font-size: 0.95rem;">{{ branch_analysis.todo_analysis.ai_comparison }}</div>
+                    </div>
+                    
+                    <div style="margin-top: 1rem; padding: 1rem; background: #fffbeb; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <span style="font-size: 1.25rem;">💡</span>
+                            <strong style="color: #92400e;">Key Insights for Branch Selection</strong>
+                        </div>
+                        <div style="color: #92400e; font-size: 0.9rem;">
+                            This analysis helps determine which branch has the most current and actionable TODO list, 
+                            indicating active development focus and clear project direction. Branches with comprehensive 
+                            TODO.md files typically represent more mature feature development and better planning.
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div style="margin-top: 1.5rem; padding: 1.5rem; background: #f3f4f6; border-radius: 8px; text-align: center; color: #6b7280;">
+                    <span style="font-size: 2rem; margin-bottom: 0.5rem; display: block;">📝</span>
+                    <div style="font-weight: 600; margin-bottom: 0.5rem;">No TODO.md Files Found</div>
+                    <div style="font-size: 0.875rem;">No planning documents were discovered across any branches. This suggests either the project is very new, uses different planning methods, or tasks are tracked externally.</div>
+                </div>
+                {% endif %}
+                
             </div>
             {% endif %}
             
@@ -926,6 +1284,38 @@ No AI decisions recorded.
 **Action:** {{ branch_analysis.action or 'Unknown' }}  
 **Reasoning:** {{ branch_analysis.selection_reasoning }}
 {% endif %}
+
+{% if branch_analysis.todo_analysis %}
+### 📋 TODO.md Cross-Branch Analysis
+
+#### Planning Coverage Summary
+- **🔍 Branches Scanned:** {{ branch_analysis.todo_analysis.total_branches_analyzed }}
+- **📋 With TODO.md:** {{ branch_analysis.todo_analysis.branches_with_todos_count }}
+- **📊 Coverage Rate:** {{ (branch_analysis.todo_analysis.branches_with_todos_count / branch_analysis.todo_analysis.total_branches_analyzed * 100)|round|int }}%
+
+#### Branch-by-Branch Status
+{% if branch_analysis.todo_analysis.todo_contents %}
+{% for branch_name, todo_data in branch_analysis.todo_analysis.todo_contents.items() %}
+{% if todo_data.exists %}
+- **{{ branch_name }}** 📋 *({{ todo_data.length }} chars)* - Active planning{% if todo_data.length > 500 %} - COMPREHENSIVE{% elif todo_data.length > 200 %} - MODERATE{% else %} - MINIMAL{% endif %}
+{% else %}
+- **{{ branch_name }}** 📄 - No TODO.md found
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if branch_analysis.todo_analysis.ai_comparison and branch_analysis.todo_analysis.ai_comparison != "No TODO.md files found in any branch." %}
+#### 🤖 AI Strategic Analysis
+```
+{{ branch_analysis.todo_analysis.ai_comparison }}
+```
+
+> **💡 Branch Selection Insight:** This analysis reveals which branches have the most current and actionable TODO lists, indicating active development focus and clear project direction. Comprehensive TODO.md files typically represent more mature feature development.
+{% else %}
+#### 📝 No Planning Documents Found
+No TODO.md files were discovered across any branches. This suggests the project either uses different planning methods or tracks tasks externally.
+{% endif %}
+{% endif %}
 {% endif %}
 
 ## 📝 File Operations Report
@@ -966,6 +1356,278 @@ No file operations recorded.
 *Generated by GitLlama v0.5.0 • {{ generation_time }}*  
 *🦙 Transparent AI-powered git automation*
 '''
+    
+    def _get_logs_html_template(self) -> str:
+        """Get the logs HTML template with filtering capabilities."""
+        return '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitLlama Detailed Logs - {{ timestamp }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6; color: #333; background: #f5f7fa;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 2rem; border-radius: 12px; margin-bottom: 2rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+        .header p { opacity: 0.9; font-size: 1rem; }
+        
+        .controls { 
+            background: white; padding: 1.5rem; border-radius: 12px; 
+            margin-bottom: 2rem; box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+        }
+        .filter-group { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+        .filter-section { display: flex; flex-direction: column; gap: 0.5rem; }
+        .filter-section label { font-weight: 600; color: #374151; font-size: 0.9rem; }
+        .filter-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .filter-btn { 
+            padding: 0.5rem 1rem; border: 2px solid #e5e7eb; background: white;
+            border-radius: 6px; cursor: pointer; transition: all 0.2s;
+            font-size: 0.9rem; font-weight: 600;
+        }
+        .filter-btn.active { background: #667eea; color: white; border-color: #667eea; }
+        .filter-btn:hover { border-color: #667eea; }
+        
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem; margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background: white; padding: 1rem; border-radius: 8px; text-align: center;
+            border-left: 4px solid #667eea; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .stat-value { font-size: 1.5rem; font-weight: bold; color: #667eea; }
+        .stat-label { color: #64748b; font-size: 0.875rem; }
+        
+        .search-box {
+            width: 100%; padding: 0.75rem; border: 2px solid #e5e7eb;
+            border-radius: 8px; font-size: 1rem; margin-bottom: 1rem;
+        }
+        .search-box:focus { outline: none; border-color: #667eea; }
+        
+        .logs-container {
+            background: white; border-radius: 12px; overflow: hidden;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+        }
+        .log-entry {
+            padding: 1rem; border-bottom: 1px solid #f1f5f9;
+            display: flex; align-items: flex-start; gap: 1rem;
+            transition: background 0.2s;
+        }
+        .log-entry:hover { background: #f8fafc; }
+        .log-entry.hidden { display: none; }
+        
+        .log-time { 
+            font-family: 'Monaco', monospace; font-size: 0.85rem; 
+            color: #6b7280; min-width: 80px; flex-shrink: 0;
+        }
+        .log-level {
+            padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;
+            font-weight: 700; text-align: center; min-width: 70px; flex-shrink: 0;
+        }
+        .level-error { background: #fee2e2; color: #dc2626; }
+        .level-warning { background: #fef3c7; color: #d97706; }
+        .level-info { background: #dbeafe; color: #2563eb; }
+        .level-debug { background: #f3f4f6; color: #6b7280; }
+        
+        .log-source {
+            font-family: 'Monaco', monospace; font-size: 0.8rem;
+            color: #9ca3af; min-width: 120px; flex-shrink: 0;
+        }
+        .log-message { 
+            flex: 1; color: #374151; font-family: 'Monaco', monospace; 
+            font-size: 0.9rem; line-height: 1.4; word-break: break-word;
+        }
+        
+        .summary-section {
+            background: white; padding: 1.5rem; border-radius: 12px;
+            margin-bottom: 2rem; box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+        }
+        .summary-section h3 { margin-bottom: 1rem; color: #374151; }
+        
+        .no-logs { 
+            text-align: center; padding: 3rem; color: #6b7280; 
+            font-style: italic; font-size: 1.1rem;
+        }
+        
+        .back-link {
+            display: inline-block; margin-bottom: 1rem; color: #667eea;
+            text-decoration: none; font-weight: 600;
+        }
+        .back-link:hover { text-decoration: underline; }
+        
+        .footer { text-align: center; padding: 2rem; color: #64748b; margin-top: 2rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 GitLlama Execution Logs</h1>
+            <p>Detailed runtime analysis • {{ generation_time }}</p>
+            <p>Repository: {{ repo_url }}</p>
+        </div>
+
+        <a href="gitllama_report_{{ timestamp }}.html" class="back-link">← Back to Main Report</a>
+
+        {% if log_summary %}
+        <div class="summary-section">
+            <h3>🤖 AI Execution Summary</h3>
+            <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid #667eea;">
+                {{ log_summary }}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="controls">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{{ logs|length }}</div>
+                    <div class="stat-label">Total Logs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ logs_by_level.ERROR|length }}</div>
+                    <div class="stat-label">Errors</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ logs_by_level.WARNING|length }}</div>
+                    <div class="stat-label">Warnings</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ logs_by_level.INFO|length }}</div>
+                    <div class="stat-label">Info</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ logs_by_level.DEBUG|length }}</div>
+                    <div class="stat-label">Debug</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ logs_by_module|length }}</div>
+                    <div class="stat-label">Modules</div>
+                </div>
+            </div>
+
+            <input type="text" class="search-box" id="logSearch" placeholder="🔍 Search logs by message, module, or function...">
+
+            <div class="filter-group">
+                <div class="filter-section">
+                    <label>Log Level:</label>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="level" data-value="all">All</button>
+                        <button class="filter-btn" data-filter="level" data-value="ERROR">Error</button>
+                        <button class="filter-btn" data-filter="level" data-value="WARNING">Warning</button>
+                        <button class="filter-btn" data-filter="level" data-value="INFO">Info</button>
+                        <button class="filter-btn" data-filter="level" data-value="DEBUG">Debug</button>
+                    </div>
+                </div>
+                
+                <div class="filter-section">
+                    <label>Module:</label>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="module" data-value="all">All</button>
+                        {% for module in logs_by_module.keys() %}
+                        <button class="filter-btn" data-filter="module" data-value="{{ module }}">{{ module.split('.')[-1] }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="logs-container">
+            {% if logs %}
+                {% for log in logs %}
+                <div class="log-entry" 
+                     data-level="{{ log.level }}" 
+                     data-module="{{ log.logger }}"
+                     data-message="{{ log.message|lower }}"
+                     data-function="{{ log.function }}"
+                     data-searchtext="{{ (log.message + ' ' + log.logger + ' ' + log.function)|lower }}">
+                    <div class="log-time">{{ log.timestamp.strftime('%H:%M:%S') }}</div>
+                    <div class="log-level level-{{ log.level.lower() }}">{{ log.level }}</div>
+                    <div class="log-source">{{ log.logger.split('.')[-1] }}:{{ log.function }}</div>
+                    <div class="log-message">{{ log.message }}</div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-logs">No logs captured during execution</div>
+            {% endif %}
+        </div>
+
+        <div class="footer">
+            <p>Generated by GitLlama v0.5.0 • {{ generation_time }}</p>
+            <p>🦙 Transparent AI-powered git automation</p>
+        </div>
+    </div>
+
+    <script>
+        const logEntries = document.querySelectorAll('.log-entry');
+        const searchBox = document.getElementById('logSearch');
+        const filterButtons = document.querySelectorAll('.filter-btn');
+        
+        let currentFilters = { level: 'all', module: 'all' };
+        let searchTerm = '';
+
+        // Filter functionality
+        filterButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const filterType = btn.dataset.filter;
+                const filterValue = btn.dataset.value;
+                
+                // Update active state
+                document.querySelectorAll(`[data-filter="${filterType}"]`).forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                // Update filters
+                currentFilters[filterType] = filterValue;
+                applyFilters();
+            });
+        });
+
+        // Search functionality
+        searchBox.addEventListener('input', (e) => {
+            searchTerm = e.target.value.toLowerCase();
+            applyFilters();
+        });
+
+        function applyFilters() {
+            logEntries.forEach(entry => {
+                const level = entry.dataset.level;
+                const module = entry.dataset.module;
+                const searchText = entry.dataset.searchtext;
+                
+                let show = true;
+                
+                // Level filter
+                if (currentFilters.level !== 'all' && level !== currentFilters.level) {
+                    show = false;
+                }
+                
+                // Module filter
+                if (currentFilters.module !== 'all' && module !== currentFilters.module) {
+                    show = false;
+                }
+                
+                // Search filter
+                if (searchTerm && !searchText.includes(searchTerm)) {
+                    show = false;
+                }
+                
+                entry.classList.toggle('hidden', !show);
+            });
+        }
+
+        // Initialize
+        applyFilters();
+    </script>
+</body>
+</html>'''
     
     def _generate_fallback_report(self) -> Path:
         """Generate a simple text-based fallback report when dependencies are missing."""
