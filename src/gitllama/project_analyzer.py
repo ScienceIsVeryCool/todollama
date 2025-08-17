@@ -16,16 +16,18 @@ logger = logging.getLogger(__name__)
 class ProjectAnalyzer:
     """Analyzes repositories using hierarchical summarization"""
     
-    def __init__(self, client: OllamaClient, model: str = "gemma3:4b"):
+    def __init__(self, client: OllamaClient, model: str = "gemma3:4b", report_generator=None):
         """Initialize the Project Analyzer.
         
         Args:
             client: OllamaClient instance
             model: Model name to use for analysis
+            report_generator: Optional ReportGenerator instance for report hooks
         """
         self.client = client
         self.model = model
         self.guided_questions = []  # Store guided questions and answers
+        self.report_generator = report_generator
         
         # Get model's context size
         self.max_context_size = self.client.get_model_context_size(model)
@@ -306,7 +308,12 @@ class ProjectAnalyzer:
         # Collect all relevant files from the repository
         # ============================================================
         logger.info("STEP 1: DATA GATHERING & VIBE DETECTION")
+        if self.report_generator:
+            self.report_generator.start_phase("Data Gathering", "Scanning repository files and detecting project structure")
         all_files, total_tokens, vibe_info = self._step1_gather_repository_data(repo_path)
+        if self.report_generator:
+            self.report_generator.add_phase_detail("Data Gathering", f"Found {len(all_files)} files with {total_tokens} tokens")
+            self.report_generator.end_phase("Data Gathering")
         
         # Run initial guided questions on repository structure
         self._ask_guided_question(
@@ -336,7 +343,12 @@ class ProjectAnalyzer:
         # Organize files into context-window-sized chunks
         # ============================================================
         logger.info("STEP 2: CHUNKING & FILE SAMPLING")
+        if self.report_generator:
+            self.report_generator.start_phase("Chunking Strategy", "Organizing files into context-sized chunks for analysis")
         chunks = self._step2_create_chunks(all_files)
+        if self.report_generator:
+            self.report_generator.add_phase_detail("Chunking Strategy", f"Created {len(chunks)} chunks for analysis")
+            self.report_generator.end_phase("Chunking Strategy")
         
         # Sample first few files for functional overview
         self._sample_files_for_vibe(all_files, vibe_info)
@@ -346,24 +358,39 @@ class ProjectAnalyzer:
         # Analyze each chunk independently
         # ============================================================
         logger.info("STEP 3: CHUNK ANALYSIS WITH GUIDED QUESTIONS")
+        if self.report_generator:
+            self.report_generator.start_phase("AI Analysis", f"Analyzing {len(chunks)} chunks with AI for deep understanding")
         chunk_summaries = self._step3_analyze_chunks(chunks, branch_context, vibe_info)
+        if self.report_generator:
+            self.report_generator.add_phase_detail("AI Analysis", f"Completed analysis of {len(chunks)} chunks")
+            self.report_generator.end_phase("AI Analysis")
         
         # ============================================================
         # STEP 4: HIERARCHICAL MERGING & SYNTHESIS
         # Merge all chunk summaries into final analysis
         # ============================================================
         logger.info("STEP 4: HIERARCHICAL MERGING & SYNTHESIS")
+        if self.report_generator:
+            self.report_generator.start_phase("Hierarchical Merging", "Combining chunk analyses into unified understanding")
         final_summary = self._step4_merge_summaries(chunk_summaries)
         
         # Perform final synthesis with recommendations
         synthesis = self._generate_final_synthesis(final_summary, vibe_info, branch_context)
+        if self.report_generator:
+            self.report_generator.add_phase_detail("Hierarchical Merging", "Generated synthesis and recommendations")
+            self.report_generator.end_phase("Hierarchical Merging")
         
         # ============================================================
         # STEP 5: FORMAT RESULTS WITH RECOMMENDATIONS
         # Format the final analysis for consumption
         # ============================================================
         logger.info("STEP 5: FORMAT RESULTS WITH RECOMMENDATIONS")
+        if self.report_generator:
+            self.report_generator.start_phase("Final Synthesis", "Formatting results and generating recommendations")
         result = self._step5_format_results(final_summary, all_files, chunks, vibe_info, synthesis)
+        if self.report_generator:
+            self.report_generator.add_phase_detail("Final Synthesis", f"Generated final analysis for {result['project_type']} project")
+            self.report_generator.end_phase("Final Synthesis")
         
         # Add branch context to result
         if branch_context:
@@ -603,11 +630,16 @@ Answer this question concisely:
         answer = response.strip()
         logger.info(f"   Answer: {answer[:100]}..." if len(answer) > 100 else f"   Answer: {answer}")
         
+        # Store in local list
         self.guided_questions.append({
             "question": question,
             "answer": answer,
             "context_summary": context[:200] + "..." if len(context) > 200 else context
         })
+        
+        # Hook into report generator
+        if self.report_generator:
+            self.report_generator.add_guided_question(question, context, answer)
         
         return answer
     

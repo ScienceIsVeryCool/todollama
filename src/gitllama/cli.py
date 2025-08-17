@@ -82,7 +82,8 @@ def main() -> int:
         print(f"🤖 Initializing GitLlama with AI model: {args.model}")
         ai_coordinator = AICoordinator(
             model=args.model,
-            base_url=args.ollama_url
+            base_url=args.ollama_url,
+            repo_url=args.git_url
         )
         
         # Test Ollama connection
@@ -127,9 +128,18 @@ def main() -> int:
                     print(f"  Next Priority: {synthesis.get('next_priority', 'Unknown')}")
                     print(f"  Recommended Tasks: {', '.join(synthesis.get('immediate_tasks', [])[:3])}")
             
+            # Show report path if available
+            if results.get('report_path'):
+                print(f"\n📊 Report Generated: {results['report_path']}")
+                print("   Open in browser to view detailed AI decision log and analysis")
+            
             return 0
         else:
             print(f"✗ Workflow failed: {results['error']}")
+            # Show failure report if available
+            if results.get('report_path'):
+                print(f"📊 Error Report Generated: {results['report_path']}")
+                print("   Open in browser to view error details and partial analysis")
             return 1
             
     except GitOperationError as e:

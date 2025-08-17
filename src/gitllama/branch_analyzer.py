@@ -16,17 +16,19 @@ logger = logging.getLogger(__name__)
 class BranchAnalyzer:
     """Analyzes git branches and makes intelligent branch selection decisions"""
     
-    def __init__(self, client: OllamaClient, model: str = "gemma3:4b"):
+    def __init__(self, client: OllamaClient, model: str = "gemma3:4b", report_generator=None):
         """Initialize the Branch Analyzer.
         
         Args:
             client: OllamaClient instance
             model: Model name to use for analysis
+            report_generator: Optional ReportGenerator instance for report hooks
         """
         self.client = client
         self.model = model
         self.branch_analyses = {}  # Store analysis of each branch
-        self.decision_formatter = AIDecisionFormatter()
+        self.decision_formatter = AIDecisionFormatter(report_generator)
+        self.report_generator = report_generator
         
         logger.info(f"BranchAnalyzer initialized with model: {model}")
     
@@ -51,6 +53,11 @@ class BranchAnalyzer:
         
         # Store the branch analyses
         self.branch_analyses = branch_summaries
+        
+        # Hook into report generator
+        if self.report_generator:
+            branches = list(branch_summaries.keys())
+            self.report_generator.add_branch_discovery(branches)
         
         # ============================================================
         # STEP 1: ANALYZE EXISTING BRANCHES
@@ -85,6 +92,14 @@ class BranchAnalyzer:
         final_branch = self._step4_finalize_branch_selection(
             decision, reuse_candidates, project_info
         )
+        
+        # Hook into report generator for final selection
+        if self.report_generator:
+            self.report_generator.set_branch_selection(
+                final_branch['branch_name'],
+                final_branch['reason'],
+                final_branch['action']
+            )
         
         logger.info("=" * 60)
         logger.info(f"Branch selection complete: {final_branch['branch_name']}")
@@ -232,6 +247,15 @@ class BranchAnalyzer:
         
         # Sort by score
         reuse_candidates.sort(key=lambda x: x['score'], reverse=True)
+        
+        # Hook into report generator
+        if self.report_generator:
+            for candidate in reuse_candidates:
+                self.report_generator.add_branch_evaluation(
+                    candidate['branch_name'], 
+                    candidate['score'], 
+                    candidate['reasons']
+                )
         
         logger.info(f"  Found {len(reuse_candidates)} potential branches for reuse")
         for candidate in reuse_candidates[:3]:  # Log top 3

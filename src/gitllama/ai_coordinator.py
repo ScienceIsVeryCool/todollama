@@ -12,6 +12,7 @@ from .project_analyzer import ProjectAnalyzer
 from .branch_analyzer import BranchAnalyzer
 from .ai_decision_formatter import AIDecisionFormatter
 from .file_modifier import FileModifier
+from .report_generator import ReportGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +20,25 @@ logger = logging.getLogger(__name__)
 class AICoordinator:
     """Coordinates AI decisions throughout the git workflow"""
     
-    def __init__(self, model: str = "gemma3:4b", base_url: str = "http://localhost:11434"):
+    def __init__(self, model: str = "gemma3:4b", base_url: str = "http://localhost:11434", repo_url: str = None):
         self.model = model
         self.client = OllamaClient(base_url)
         self.context_window = []
         
-        # Initialize the analyzers and decision formatter
-        self.project_analyzer = ProjectAnalyzer(self.client, model)
-        self.branch_analyzer = BranchAnalyzer(self.client, model)
-        self.decision_formatter = AIDecisionFormatter()
-        self.file_modifier = FileModifier(self.client, model)
+        # Initialize report generator if repo_url is provided
+        self.report_generator = None
+        if repo_url:
+            self.report_generator = ReportGenerator(repo_url)
+        
+        # Initialize the analyzers and decision formatter with report generator
+        self.project_analyzer = ProjectAnalyzer(self.client, model, self.report_generator)
+        self.branch_analyzer = BranchAnalyzer(self.client, model, self.report_generator)
+        self.decision_formatter = AIDecisionFormatter(self.report_generator)
+        self.file_modifier = FileModifier(self.client, model, self.report_generator)
         
         logger.info(f"Initialized AI Coordinator with model: {model}")
+        if self.report_generator:
+            logger.info("Report generation enabled")
     
     def explore_repository(self, repo_path: Path, analyze_all_branches: bool = False) -> Dict:
         """Explore the repository using the dedicated ProjectAnalyzer.
@@ -391,3 +399,53 @@ Respond with ONLY the commit message, no explanation."""
             summary_lines.append(f"{i}. Q: {question}\n   A: {answer}")
         
         return "\n".join(summary_lines)
+    
+    def generate_final_report(self, repo_path: str, branch: str, modified_files: List[str], 
+                             commit_hash: str, success: bool) -> Optional[Path]:
+        """Generate the final HTML report if report generator is available.
+        
+        Args:
+            repo_path: Path to the repository
+            branch: Selected branch name
+            modified_files: List of modified file paths
+            commit_hash: Git commit hash
+            success: Whether the workflow was successful
+            
+        Returns:
+            Path to generated report or None if no report generator
+        """
+        if not self.report_generator:
+            return None
+        
+        logger.info("Generating final HTML report...")
+        
+        # Set executive summary
+        total_decisions = sum(len(analyzer.decision_formatter.decision_history) 
+                            for analyzer in [self.branch_analyzer, self.file_modifier]
+                            if hasattr(analyzer, 'decision_formatter'))
+        
+        self.report_generator.set_executive_summary(
+            repo_path=repo_path,
+            branch=branch,
+            modified_files=modified_files,
+            commit_hash=commit_hash,
+            success=success,
+            total_decisions=total_decisions
+        )
+        
+        # Set model information
+        context_size = self.client.get_model_context_size(self.model)
+        # Estimate total tokens used (this would be more accurate with actual tracking)
+        estimated_tokens = sum(analyzer.usable_context_size for analyzer in [self.project_analyzer] 
+                             if hasattr(analyzer, 'usable_context_size'))
+        
+        self.report_generator.set_model_info(
+            model=self.model,
+            context_window=context_size,
+            total_tokens=estimated_tokens
+        )
+        
+        # Generate and return the report
+        report_path = self.report_generator.generate_report()
+        logger.info(f"Report generated: {report_path}")
+        return report_path

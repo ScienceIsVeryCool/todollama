@@ -266,6 +266,16 @@ class GitAutomator:
                 "error": "No AI coordinator available. GitLlama requires Ollama to be running."
             }
         
+        # Update AI coordinator with git URL for report generation
+        if hasattr(self.ai_coordinator, 'report_generator') and self.ai_coordinator.report_generator is None:
+            from .report_generator import ReportGenerator
+            self.ai_coordinator.report_generator = ReportGenerator(git_url)
+            # Update all components with the new report generator
+            self.ai_coordinator.project_analyzer.report_generator = self.ai_coordinator.report_generator
+            self.ai_coordinator.branch_analyzer.report_generator = self.ai_coordinator.report_generator
+            self.ai_coordinator.decision_formatter.report_generator = self.ai_coordinator.report_generator
+            self.ai_coordinator.file_modifier.report_generator = self.ai_coordinator.report_generator
+        
         try:
             # Step 1: Clone repository
             repo_path = self.clone_repository(git_url)
@@ -315,6 +325,20 @@ class GitAutomator:
             
             logger.info("AI workflow completed successfully")
             
+            # Generate final HTML report
+            report_path = None
+            if hasattr(self.ai_coordinator, 'generate_final_report'):
+                try:
+                    report_path = self.ai_coordinator.generate_final_report(
+                        repo_path=str(repo_path),
+                        branch=branch_name,
+                        modified_files=modified_files,
+                        commit_hash=commit_hash,
+                        success=True
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to generate report: {e}")
+            
             result = {
                 "success": True,
                 "repo_path": str(repo_path),
@@ -323,14 +347,31 @@ class GitAutomator:
                 "commit_hash": commit_hash,
                 "message": "AI workflow completed successfully",
                 "ai_analysis": project_info,
-                "total_ai_decisions": workflow_result.get("total_decisions", 0)
+                "total_ai_decisions": workflow_result.get("total_decisions", 0),
+                "report_path": str(report_path) if report_path else None
             }
             
             return result
             
         except Exception as e:
             logger.error(f"Workflow failed: {e}")
+            
+            # Generate failure report
+            report_path = None
+            if hasattr(self.ai_coordinator, 'generate_final_report'):
+                try:
+                    report_path = self.ai_coordinator.generate_final_report(
+                        repo_path=str(repo_path) if 'repo_path' in locals() else "",
+                        branch=branch_name or "unknown",
+                        modified_files=[],
+                        commit_hash="failed",
+                        success=False
+                    )
+                except Exception as report_error:
+                    logger.warning(f"Failed to generate error report: {report_error}")
+            
             return {
                 "success": False,
-                "error": str(e)
+                "error": str(e),
+                "report_path": str(report_path) if report_path else None
             }

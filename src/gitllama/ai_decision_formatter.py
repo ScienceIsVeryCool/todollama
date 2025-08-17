@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 class AIDecisionFormatter:
     """Formats AI prompts and parses single-word responses with fuzzy matching"""
     
-    def __init__(self):
+    def __init__(self, report_generator=None):
         self.decision_history: List[Dict[str, Any]] = []
+        self.report_generator = report_generator
     
     def format_decision_prompt(self, context: str, question: str, options: List[str], 
                              additional_context: str = "") -> str:
@@ -140,6 +141,17 @@ Your single-word decision:"""
             "confidence": confidence
         }
         self.decision_history.append(decision_record)
+        
+        # Hook into report generator
+        if self.report_generator:
+            self.report_generator.add_ai_decision(
+                context=context,
+                question=question,
+                options=options,
+                selected=selected_option,
+                confidence=confidence,
+                reasoning=f"Raw response: {response.strip()}"
+            )
         
         # Log the result with special formatting
         logger.info("╔" + "═" * 80 + "╗")

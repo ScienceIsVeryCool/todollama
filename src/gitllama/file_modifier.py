@@ -17,17 +17,19 @@ logger = logging.getLogger(__name__)
 class FileModifier:
     """AI-driven file modification system"""
     
-    def __init__(self, client: OllamaClient, model: str = "gemma3:4b"):
+    def __init__(self, client: OllamaClient, model: str = "gemma3:4b", report_generator=None):
         """Initialize the File Modifier.
         
         Args:
             client: OllamaClient instance
             model: Model name to use for decisions
+            report_generator: Optional ReportGenerator instance for report hooks
         """
         self.client = client
         self.model = model
-        self.decision_formatter = AIDecisionFormatter()
+        self.decision_formatter = AIDecisionFormatter(report_generator)
         self.selected_files: List[Dict[str, Any]] = []
+        self.report_generator = report_generator
         
         logger.info(f"FileModifier initialized with model: {model}")
     
@@ -263,13 +265,36 @@ Content:"""
                     
                     logger.info(f"✓ Created: {op['file_path']}")
                     modified_files.append(op['file_path'])
+                    
+                    # Hook into report generator
+                    if self.report_generator:
+                        self.report_generator.add_file_operation(
+                            "CREATE", op['file_path'], op.get('reason', 'AI decision'),
+                            content=op.get('content', '')
+                        )
                 
                 elif op['operation'] == 'MODIFY':
                     if file_path.exists():
+                        # Read original content for diff
+                        original_content = ""
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                original_content = f.read()
+                        except:
+                            pass
+                        
                         with open(file_path, 'w', encoding='utf-8') as f:
                             f.write(op.get('content', ''))
                         logger.info(f"✓ Modified: {op['file_path']}")
                         modified_files.append(op['file_path'])
+                        
+                        # Hook into report generator
+                        if self.report_generator:
+                            self.report_generator.add_file_operation(
+                                "MODIFY", op['file_path'], op.get('reason', 'AI decision'),
+                                content=op.get('content', ''),
+                                diff=f"Original length: {len(original_content)}, New length: {len(op.get('content', ''))}"
+                            )
                     else:
                         logger.warning(f"File to modify does not exist: {op['file_path']}")
                 
@@ -278,6 +303,12 @@ Content:"""
                         file_path.unlink()
                         logger.info(f"✓ Deleted: {op['file_path']}")
                         modified_files.append(op['file_path'])
+                        
+                        # Hook into report generator
+                        if self.report_generator:
+                            self.report_generator.add_file_operation(
+                                "DELETE", op['file_path'], op.get('reason', 'AI decision')
+                            )
                     else:
                         logger.warning(f"File to delete does not exist: {op['file_path']}")
                 
