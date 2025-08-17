@@ -5,6 +5,7 @@ Intelligent branch selection and analysis with clear decision logic
 
 import json
 import logging
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from .ollama_client import OllamaClient
@@ -97,10 +98,7 @@ class BranchAnalyzer:
         """STEP 1: Analyze the purpose of each existing branch.
         
         This step examines each branch's analysis to understand its purpose.
-        Future enhancements could include:
-        - Commit history analysis
-        - Age and activity level assessment
-        - Merge status checking
+        Now includes git history analysis for better vibe detection.
         
         Args:
             branch_summaries: Dictionary of branch analyses
@@ -119,9 +117,17 @@ class BranchAnalyzer:
                 branch_purposes[branch_name] = {
                     'purpose': 'empty',
                     'active': False,
-                    'suitable_for_work': False
+                    'suitable_for_work': False,
+                    'unique_commits': [],
+                    'vibe': 'empty'
                 }
                 continue
+            
+            # Get unique commits for this branch
+            unique_commits = self._get_unique_commits(branch_name)
+            
+            # Analyze vibe from commits and summary
+            vibe = self._analyze_branch_vibe(branch_name, summary, unique_commits)
             
             # Extract key information
             purpose_info = {
@@ -130,12 +136,14 @@ class BranchAnalyzer:
                 'technologies': summary.get('technologies', []),
                 'quality': summary.get('quality', 'unknown'),
                 'patterns': summary.get('patterns', []),
-                'active': True,  # Could be enhanced with commit history
-                'suitable_for_work': True  # Will be refined in next step
+                'unique_commits': unique_commits,
+                'vibe': vibe,
+                'active': len(unique_commits) > 0,
+                'suitable_for_work': vibe in ['wip', 'experimental', 'feature']
             }
             
             branch_purposes[branch_name] = purpose_info
-            logger.info(f"    Branch '{branch_name}': {purpose_info['purpose'][:50]}...")
+            logger.info(f"    Branch '{branch_name}': {purpose_info['purpose'][:50]}... (vibe: {vibe})")
         
         return branch_purposes
     
@@ -459,3 +467,91 @@ Respond with ONLY the branch name, no explanation."""
         
         logger.info(f"    Created new branch name: {branch_name}")
         return result
+    
+    def _get_unique_commits(self, branch_name: str, max_commits: int = 10) -> List[str]:
+        """Get unique commits for a branch compared to main/master.
+        
+        Args:
+            branch_name: Name of the branch
+            max_commits: Maximum number of commits to return
+            
+        Returns:
+            List of unique commit messages
+        """
+        try:
+            # Find the main branch
+            main_branch = 'main'
+            check_main = subprocess.run(
+                ['git', 'rev-parse', '--verify', 'main'],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            if check_main.returncode != 0:
+                main_branch = 'master'
+            
+            # Skip if this is the main branch
+            if branch_name in ['main', 'master']:
+                return []
+            
+            # Get unique commits
+            result = subprocess.run(
+                ['git', 'log', f'{main_branch}..{branch_name}', '--oneline', f'-{max_commits}'],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            if result.returncode == 0 and result.stdout:
+                commits = result.stdout.strip().split('\n')
+                return [c.split(' ', 1)[1] if ' ' in c else c for c in commits if c]
+            
+        except Exception as e:
+            logger.debug(f"Could not get unique commits for {branch_name}: {e}")
+        
+        return []
+    
+    def _analyze_branch_vibe(self, branch_name: str, summary: Dict, unique_commits: List[str]) -> str:
+        """Analyze the vibe of a branch based on its name, commits, and summary.
+        
+        Args:
+            branch_name: Name of the branch
+            summary: Branch analysis summary
+            unique_commits: List of unique commit messages
+            
+        Returns:
+            Vibe string: 'wip', 'experimental', 'feature', 'fix', 'stable', etc.
+        """
+        branch_lower = branch_name.lower()
+        
+        # Check branch name patterns
+        if any(x in branch_lower for x in ['wip', 'draft', 'temp', 'test']):
+            return 'wip'
+        if any(x in branch_lower for x in ['experiment', 'poc', 'proto']):
+            return 'experimental'
+        if any(x in branch_lower for x in ['feature/', 'feat/', 'enhance']):
+            return 'feature'
+        if any(x in branch_lower for x in ['fix/', 'bugfix/', 'hotfix']):
+            return 'fix'
+        if any(x in branch_lower for x in ['docs/', 'documentation']):
+            return 'documentation'
+        
+        # Check commit messages for WIP indicators
+        if unique_commits:
+            commit_text = ' '.join(unique_commits).lower()
+            if any(x in commit_text for x in ['wip', 'work in progress', 'todo', 'fixme']):
+                return 'wip'
+            if any(x in commit_text for x in ['experiment', 'test', 'trying']):
+                return 'experimental'
+        
+        # Check if branch has TODO.md changes
+        if summary and summary.get('has_todo'):
+            return 'feature'
+        
+        # Default based on activity
+        if len(unique_commits) > 5:
+            return 'active'
+        elif len(unique_commits) > 0:
+            return 'recent'
+        
+        return 'stable'

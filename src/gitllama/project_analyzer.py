@@ -25,6 +25,7 @@ class ProjectAnalyzer:
         """
         self.client = client
         self.model = model
+        self.guided_questions = []  # Store guided questions and answers
         
         # Get model's context size
         self.max_context_size = self.client.get_model_context_size(model)
@@ -301,11 +302,19 @@ class ProjectAnalyzer:
         logger.info("=" * 60)
         
         # ============================================================
-        # STEP 1: DATA GATHERING
+        # STEP 1: DATA GATHERING & VIBE DETECTION
         # Collect all relevant files from the repository
         # ============================================================
-        logger.info("STEP 1: DATA GATHERING")
-        all_files, total_tokens = self._step1_gather_repository_data(repo_path)
+        logger.info("STEP 1: DATA GATHERING & VIBE DETECTION")
+        all_files, total_tokens, vibe_info = self._step1_gather_repository_data(repo_path)
+        
+        # Run initial guided questions on repository structure
+        self._ask_guided_question(
+            "What branches and tags exist? Does this suggest active development?",
+            f"Found {len(vibe_info.get('directory_structure', []))} directories, "
+            f"{len(vibe_info.get('file_types', []))} file types. "
+            f"TODO.md exists: {vibe_info.get('has_todo', False)}"
+        )
         
         if not all_files:
             logger.warning("No analyzable files found in repository")
@@ -313,6 +322,7 @@ class ProjectAnalyzer:
                 "project_type": "empty",
                 "technologies": [],
                 "state": "No analyzable files found",
+                "vibe": vibe_info,
                 "analysis_metadata": {
                     "total_files": 0,
                     "total_tokens": 0,
@@ -322,32 +332,38 @@ class ProjectAnalyzer:
             }
         
         # ============================================================
-        # STEP 2: CHUNKING
+        # STEP 2: CHUNKING & FILE SAMPLING
         # Organize files into context-window-sized chunks
         # ============================================================
-        logger.info("STEP 2: CHUNKING")
+        logger.info("STEP 2: CHUNKING & FILE SAMPLING")
         chunks = self._step2_create_chunks(all_files)
         
+        # Sample first few files for functional overview
+        self._sample_files_for_vibe(all_files, vibe_info)
+        
         # ============================================================
-        # STEP 3: CHUNK ANALYSIS
+        # STEP 3: CHUNK ANALYSIS WITH GUIDED QUESTIONS
         # Analyze each chunk independently
         # ============================================================
-        logger.info("STEP 3: CHUNK ANALYSIS")
-        chunk_summaries = self._step3_analyze_chunks(chunks, branch_context)
+        logger.info("STEP 3: CHUNK ANALYSIS WITH GUIDED QUESTIONS")
+        chunk_summaries = self._step3_analyze_chunks(chunks, branch_context, vibe_info)
         
         # ============================================================
-        # STEP 4: HIERARCHICAL MERGING
+        # STEP 4: HIERARCHICAL MERGING & SYNTHESIS
         # Merge all chunk summaries into final analysis
         # ============================================================
-        logger.info("STEP 4: HIERARCHICAL MERGING")
+        logger.info("STEP 4: HIERARCHICAL MERGING & SYNTHESIS")
         final_summary = self._step4_merge_summaries(chunk_summaries)
         
+        # Perform final synthesis with recommendations
+        synthesis = self._generate_final_synthesis(final_summary, vibe_info, branch_context)
+        
         # ============================================================
-        # STEP 5: FORMAT RESULTS
+        # STEP 5: FORMAT RESULTS WITH RECOMMENDATIONS
         # Format the final analysis for consumption
         # ============================================================
-        logger.info("STEP 5: FORMAT RESULTS")
-        result = self._step5_format_results(final_summary, all_files, chunks)
+        logger.info("STEP 5: FORMAT RESULTS WITH RECOMMENDATIONS")
+        result = self._step5_format_results(final_summary, all_files, chunks, vibe_info, synthesis)
         
         # Add branch context to result
         if branch_context:
@@ -357,29 +373,35 @@ class ProjectAnalyzer:
         logger.info("=" * 60)
         logger.info("Repository analysis complete!")
         
+        # Add guided questions to result
+        result["guided_questions"] = self.guided_questions
+        
         return result
     
     # ============================================================
     # STEP 1: DATA GATHERING
     # ============================================================
     
-    def _step1_gather_repository_data(self, repo_path: Path) -> Tuple[List[Dict], int]:
+    def _step1_gather_repository_data(self, repo_path: Path) -> Tuple[List[Dict], int, Dict]:
         """STEP 1: Gather all repository data for analysis.
         
         This step scans the repository and collects all relevant files.
-        Future enhancements could include:
-        - Git history analysis
-        - Branch information gathering
-        - Dependency file parsing
-        - Binary file metadata extraction
+        Also performs initial "vibe" detection including TODO.md check.
         
         Returns:
-            Tuple of (list of file data dicts, total token count)
+            Tuple of (list of file data dicts, total token count, vibe info)
         """
         logger.info(f"  Gathering repository data from {repo_path}")
         
         all_files = []
         total_tokens = 0
+        vibe_info = {
+            "has_todo": False,
+            "todo_content": None,
+            "directory_structure": [],
+            "key_files": [],
+            "file_types": set()
+        }
         
         # Define file extensions to analyze
         text_extensions = {'.py', '.js', '.tsx', '.jsx', '.md', '.txt', '.json', 
@@ -430,11 +452,47 @@ class ProjectAnalyzer:
                     })
                     total_tokens += file_tokens
                     
+                    # Track file types for vibe
+                    if file_path.suffix:
+                        vibe_info["file_types"].add(file_path.suffix)
+                    
+                    # Identify key files for vibe
+                    if file_path.name in ['README.md', 'package.json', 'requirements.txt', 
+                                         'Cargo.toml', 'go.mod', 'pom.xml', 'build.gradle']:
+                        vibe_info["key_files"].append(str(relative_path))
+                    
                 except Exception as e:
                     logger.debug(f"  Could not read {file_path}: {e}")
         
+        # Check for TODO.md file specifically
+        todo_path = repo_path / "TODO.md"
+        if todo_path.exists():
+            try:
+                with open(todo_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    todo_content = f.read()
+                vibe_info["has_todo"] = True
+                vibe_info["todo_content"] = todo_content
+                logger.info(f"  ✓ Found TODO.md with guidance from project owner")
+            except Exception as e:
+                logger.debug(f"  Could not read TODO.md: {e}")
+        else:
+            logger.info(f"  No TODO.md found - will infer next steps from context")
+        
+        # Get directory structure for vibe analysis
+        dirs_seen = set()
+        for file_path in repo_path.rglob("*"):
+            if file_path.is_dir() and not any(part.startswith('.') for part in file_path.parts):
+                rel_dir = str(file_path.relative_to(repo_path))
+                dirs_seen.add(rel_dir)
+        vibe_info["directory_structure"] = sorted(list(dirs_seen))[:20]  # Top 20 dirs
+        
+        # Track file types for vibe
+        vibe_info["file_types"] = sorted(list(vibe_info["file_types"]))[:15]  # Top 15 types
+        
         logger.info(f"  Found {len(all_files)} files with {total_tokens} total tokens")
-        return all_files, total_tokens
+        logger.info(f"  Directory vibe: {len(vibe_info['directory_structure'])} directories")
+        logger.info(f"  File type vibe: {len(vibe_info['file_types'])} distinct types")
+        return all_files, total_tokens, vibe_info
     
     # ============================================================
     # STEP 2: CHUNKING
@@ -518,7 +576,158 @@ class ProjectAnalyzer:
     # STEP 3: CHUNK ANALYSIS
     # ============================================================
     
-    def _step3_analyze_chunks(self, chunks: List[List[Dict]], branch_context: Optional[str] = None) -> List[Dict]:
+    def _ask_guided_question(self, question: str, context: str) -> str:
+        """Ask a guided question and store the answer.
+        
+        Args:
+            question: The guided question to ask
+            context: Context to provide for answering
+            
+        Returns:
+            The AI's answer
+        """
+        logger.info(f"📝 Guided Question: {question}")
+        
+        prompt = f"""Based on this context:
+{context}
+
+Answer this question concisely:
+{question}"""
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = ""
+        
+        for chunk in self.client.chat_stream(self.model, messages):
+            response += chunk
+        
+        answer = response.strip()
+        logger.info(f"   Answer: {answer[:100]}..." if len(answer) > 100 else f"   Answer: {answer}")
+        
+        self.guided_questions.append({
+            "question": question,
+            "answer": answer,
+            "context_summary": context[:200] + "..." if len(context) > 200 else context
+        })
+        
+        return answer
+    
+    def _sample_files_for_vibe(self, all_files: List[Dict], vibe_info: Dict) -> List[Dict]:
+        """Sample key files for functional overview.
+        
+        Args:
+            all_files: List of all files
+            vibe_info: Vibe information
+            
+        Returns:
+            List of sampled files
+        """
+        sampled = []
+        
+        # Priority files to sample
+        priority_files = ['README.md', 'package.json', 'requirements.txt', 
+                         'main.py', 'index.js', 'app.py', 'main.go']
+        
+        for file_data in all_files:
+            file_name = Path(file_data['path']).name
+            if file_name in priority_files:
+                sampled.append(file_data)
+                if len(sampled) >= 5:
+                    break
+        
+        # If we don't have enough, add some regular code files
+        if len(sampled) < 5:
+            code_extensions = ['.py', '.js', '.tsx', '.go', '.rs', '.java']
+            for file_data in all_files:
+                if Path(file_data['path']).suffix in code_extensions and file_data not in sampled:
+                    sampled.append(file_data)
+                    if len(sampled) >= 10:
+                        break
+        
+        if sampled:
+            # Ask guided question about sampled content
+            sample_context = "\n".join([f"File: {f['path']}\n{f['content'][:200]}..." 
+                                       for f in sampled[:3]])
+            self._ask_guided_question(
+                "What core functionality do these files reveal? Is it a web app, CLI tool, library?",
+                sample_context
+            )
+        
+        return sampled
+    
+    def _generate_final_synthesis(self, final_summary: Dict, vibe_info: Dict, 
+                                 branch_context: Optional[str] = None) -> Dict:
+        """Generate final synthesis with recommendations.
+        
+        Args:
+            final_summary: The merged analysis
+            vibe_info: Vibe information
+            branch_context: Current branch context
+            
+        Returns:
+            Synthesis with recommendations
+        """
+        logger.info("  Generating final synthesis and recommendations")
+        
+        # Build context for synthesis
+        context_parts = [
+            f"Project type: {final_summary.get('project_type', 'unknown')}",
+            f"Technologies: {', '.join(final_summary.get('all_technologies', [])[:5])}",
+            f"Current state: {final_summary.get('state', 'unknown')}",
+            f"Has TODO.md: {vibe_info.get('has_todo', False)}"
+        ]
+        
+        if vibe_info.get('has_todo') and vibe_info.get('todo_content'):
+            context_parts.append(f"TODO.md excerpt: {vibe_info['todo_content'][:500]}...")
+        
+        if branch_context:
+            context_parts.append(f"Current branch: {branch_context}")
+        
+        context = "\n".join(context_parts)
+        
+        # Ask for synthesis
+        logger.info(f"🤖 AI: Generating synthesis and next steps recommendation")
+        
+        prompt = f"""Based on this repository analysis:
+{context}
+
+Provide a synthesis with:
+1. What is the immediate next development priority?
+2. Which branch should be worked on (or should a new one be created)?
+3. What specific tasks should be accomplished in the next coding session?
+{"4. How does the TODO.md align with the current state?" if vibe_info.get('has_todo') else ""}
+
+Response in JSON format:
+{{
+    "next_priority": "specific next development focus",
+    "recommended_branch": "branch name or 'create new'",
+    "immediate_tasks": ["task1", "task2", "task3"],
+    "development_direction": "overall direction",
+    {('"todo_alignment": "how TODO.md aligns with current state",' if vibe_info.get('has_todo') else '')}
+    "confidence": "high|medium|low"
+}}"""
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = ""
+        
+        for chunk in self.client.chat_stream(self.model, messages):
+            response += chunk
+        
+        try:
+            synthesis = json.loads(response)
+            logger.info(f"  Synthesis complete: Next priority - {synthesis.get('next_priority', 'unknown')}")
+            return synthesis
+        except json.JSONDecodeError:
+            logger.warning("  Synthesis JSON parse failed, using defaults")
+            return {
+                "next_priority": "Continue development based on context",
+                "recommended_branch": branch_context or "main",
+                "immediate_tasks": ["Review code", "Fix issues", "Add features"],
+                "development_direction": "Incremental improvements",
+                "confidence": "low"
+            }
+    
+    def _step3_analyze_chunks(self, chunks: List[List[Dict]], branch_context: Optional[str] = None, 
+                             vibe_info: Optional[Dict] = None) -> List[Dict]:
         """STEP 3: Analyze each chunk independently.
         
         This step performs AI analysis on each chunk.
@@ -542,6 +751,15 @@ class ProjectAnalyzer:
             logger.info(f"    Processing chunk {i}/{len(chunks)}...")
             summary = self._analyze_single_chunk(chunk, i, len(chunks), branch_context)
             chunk_summaries.append(summary)
+            
+            # Ask guided question about chunk findings
+            if i == 1 and vibe_info:
+                self._ask_guided_question(
+                    "What does the first chunk reveal about the project's main purpose?",
+                    f"Technologies: {summary.get('technologies', [])}\n"
+                    f"Purpose: {summary.get('main_purpose', 'unknown')}"
+                )
+            
             logger.info(f"    Chunk {i} analysis complete")
         
         return chunk_summaries
@@ -715,7 +933,7 @@ Response in JSON format:
     # ============================================================
     
     def _step5_format_results(self, final_summary: Dict, all_files: List[Dict], 
-                             chunks: List[List[Dict]]) -> Dict:
+                             chunks: List[List[Dict]], vibe_info: Dict, synthesis: Dict) -> Dict:
         """STEP 5: Format the final analysis results.
         
         This step creates the final output format.
@@ -729,6 +947,7 @@ Response in JSON format:
             final_summary: The merged analysis
             all_files: Original file list
             chunks: The chunks that were created
+            vibe_info: Vibe information gathered
             
         Returns:
             Formatted analysis results
@@ -744,6 +963,14 @@ Response in JSON format:
             "architecture": final_summary.get("architecture", ""),
             "quality": final_summary.get("overall_quality", ""),
             "patterns": final_summary.get("key_patterns", []),
+            "vibe": vibe_info,
+            "has_todo": vibe_info.get("has_todo", False),
+            "synthesis": synthesis,
+            "next_steps": {
+                "priority": synthesis.get("next_priority", "Continue development"),
+                "recommended_branch": synthesis.get("recommended_branch", "main"),
+                "tasks": synthesis.get("immediate_tasks", [])
+            },
             "analysis_metadata": {
                 "total_files": len(all_files),
                 "total_tokens": total_tokens,
