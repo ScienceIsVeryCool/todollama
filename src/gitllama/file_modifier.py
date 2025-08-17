@@ -236,6 +236,115 @@ Content:"""
         
         return response.strip()
     
+    def _generate_todo_update(self, repo_path: Path, project_info: Dict, completed_operations: List[Dict[str, Any]]) -> str:
+        """Generate updated TODO.md content based on what was accomplished."""
+        logger.info("🤖 AI: Generating updated TODO.md content")
+        
+        # Read existing TODO.md if it exists
+        todo_path = repo_path / "TODO.md"
+        existing_todo = ""
+        if todo_path.exists():
+            try:
+                with open(todo_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    existing_todo = f.read()
+            except Exception as e:
+                logger.debug(f"Could not read existing TODO.md: {e}")
+        
+        # Build context for AI
+        context_parts = [
+            f"Project Type: {project_info.get('project_type', 'unknown')}",
+            f"Technologies: {', '.join(project_info.get('technologies', [])[:5])}",
+            f"Operations Completed: {len(completed_operations)} files modified/created"
+        ]
+        
+        # Add synthesis info if available
+        synthesis = project_info.get('synthesis', {})
+        if synthesis:
+            context_parts.extend([
+                f"Previous Priority: {synthesis.get('next_priority', 'unknown')}",
+                f"Completed Tasks: {', '.join(synthesis.get('immediate_tasks', [])[:3])}"
+            ])
+        
+        # Summarize what was accomplished
+        operations_summary = []
+        for op in completed_operations:
+            operations_summary.append(f"- {op['operation']}: {op['file_path']} ({op.get('reason', 'AI decision')})")
+        
+        context = "\n".join(context_parts)
+        operations_text = "\n".join(operations_summary)
+        
+        prompt = f"""You are helping maintain a TODO.md file for a software project. Based on the recent work completed, update the TODO.md to reflect the current state and next priorities.
+
+PROJECT CONTEXT:
+{context}
+
+WORK JUST COMPLETED:
+{operations_text}
+
+EXISTING TODO.md CONTENT:
+{existing_todo if existing_todo else "[No existing TODO.md file]"}
+
+INSTRUCTIONS:
+1. Review what was just completed and update/remove those items if they're done
+2. Keep any existing TODO items that are still relevant and not completed
+3. Add new logical next steps based on what was just accomplished
+4. Prioritize the most impactful next actions
+5. Use clear, actionable language
+6. Organize by priority (high/medium/low or similar)
+7. Don't remove items unless you're confident they're no longer needed
+8. Focus on maintaining project momentum - what should happen next?
+
+Generate a complete, well-organized TODO.md file that builds on the progress made:"""
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = ""
+        
+        for chunk in self.client.chat_stream(self.model, messages):
+            response += chunk
+        
+        return response.strip()
+    
+    def _update_todo_file(self, repo_path: Path, project_info: Dict, completed_operations: List[Dict[str, Any]]) -> bool:
+        """Update the TODO.md file with next steps after completing operations.
+        
+        Args:
+            repo_path: Repository path
+            project_info: Project information
+            completed_operations: List of operations that were completed
+            
+        Returns:
+            True if TODO.md was updated, False otherwise
+        """
+        logger.info("Updating TODO.md with next steps")
+        
+        try:
+            # Check if TODO.md exists before writing
+            todo_path = repo_path / "TODO.md"
+            file_existed = todo_path.exists()
+            
+            # Generate new TODO content
+            new_todo_content = self._generate_todo_update(repo_path, project_info, completed_operations)
+            
+            # Write to TODO.md
+            with open(todo_path, 'w', encoding='utf-8') as f:
+                f.write(new_todo_content)
+            
+            logger.info("✓ Updated TODO.md with next priorities")
+            
+            # Hook into report generator
+            if self.report_generator:
+                operation_type = "MODIFY" if file_existed else "CREATE"
+                self.report_generator.add_file_operation(
+                    operation_type, "TODO.md", "AI updated project TODO list with next priorities",
+                    content=new_todo_content
+                )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update TODO.md: {e}")
+            return False
+    
     def execute_file_operations(self, repo_path: Path, file_operations: List[Dict[str, Any]]) -> List[str]:
         """Execute the file operations and return list of modified files.
         
@@ -454,13 +563,19 @@ Content:"""
         # Step 2: Execute operations
         modified_files = self.execute_file_operations(repo_path, file_operations)
         
-        # Step 3: Commit and push
+        # Step 3: Update TODO.md with next steps
+        todo_updated = self._update_todo_file(repo_path, project_info, file_operations)
+        if todo_updated:
+            modified_files.append("TODO.md")
+        
+        # Step 4: Commit and push
         success = self.commit_and_push_changes(repo_path, modified_files, project_info)
         
         # Generate summary
         result = {
             "file_operations": file_operations,
             "modified_files": modified_files,
+            "todo_updated": todo_updated,
             "commit_success": success,
             "decision_summary": self.decision_formatter.get_decision_summary(),
             "total_decisions": len(self.decision_formatter.decision_history)

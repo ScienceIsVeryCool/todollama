@@ -1,6 +1,6 @@
 # GitLlama 🦙🤖
 
-AI-powered git automation tool with deep project understanding. GitLlama v0.4.0 uses hierarchical AI analysis and intelligent single-word decision-making to clone, analyze, optimize, commit, and push your code.
+AI-powered git automation tool with deep project understanding. GitLlama v0.5.0 uses hierarchical AI analysis and intelligent single-word decision-making to clone, analyze, optimize, commit, and push your code.
 
 ## 🌟 Key Features
 

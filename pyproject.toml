@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gitllama"
-version = "0.4.0"
+version = "0.5.0"
 description = "AI-powered git automation tool - clone, branch, change, commit, push with intelligence"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
