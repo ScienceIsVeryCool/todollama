@@ -58,6 +58,16 @@ class ProjectAnalyzer:
         all_branches = self._get_all_branches(repo_path)
         logger.info(f"Found {len(all_branches)} total branches")
         
+        # Log all discovered branches before starting analysis
+        if all_branches:
+            logger.info("Discovered branches:")
+            for branch in all_branches:
+                is_current = " (current)" if branch == current_branch else ""
+                logger.info(f"  - {branch}{is_current}")
+        else:
+            logger.warning("No branches found in repository!")
+            return current_branch, {}
+        
         # Analyze each branch
         branch_analyses = {}
         
@@ -66,22 +76,37 @@ class ProjectAnalyzer:
             logger.info(f"ANALYZING BRANCH {i}/{len(all_branches)}: {branch}")
             logger.info(f"{'=' * 60}")
             
-            # Checkout the branch
+            # Checkout the branch if different from current
             if branch != current_branch:
-                self._checkout_branch(repo_path, branch)
+                logger.info(f"  Switching from '{current_branch}' to '{branch}'...")
+                if not self._checkout_branch(repo_path, branch):
+                    logger.error(f"  Failed to checkout branch '{branch}', skipping analysis")
+                    continue
+            else:
+                logger.info(f"  Already on branch '{branch}', no checkout needed")
             
             # Analyze the branch
+            logger.info(f"  Starting analysis of branch '{branch}'...")
             analysis = self.analyze_repository(repo_path, branch_context=branch)
             branch_analyses[branch] = analysis
             
-            logger.info(f"Branch '{branch}' analysis complete")
+            logger.info(f"  Branch '{branch}' analysis complete")
         
         # Return to original branch
-        if current_branch in all_branches:
-            self._checkout_branch(repo_path, current_branch)
-        
         logger.info(f"\n{'=' * 60}")
+        if current_branch in all_branches:
+            logger.info(f"Returning to original branch: {current_branch}")
+            if self._checkout_branch(repo_path, current_branch):
+                logger.info(f"Successfully returned to branch: {current_branch}")
+            else:
+                logger.error(f"Failed to return to original branch: {current_branch}")
+        else:
+            logger.warning(f"Original branch '{current_branch}' not found in branch list, staying on current branch")
+        
+        logger.info(f"{'=' * 60}")
         logger.info(f"ALL BRANCHES ANALYZED SUCCESSFULLY")
+        logger.info(f"  Total branches analyzed: {len(branch_analyses)}")
+        logger.info(f"  Current branch: {current_branch}")
         logger.info(f"{'=' * 60}\n")
         
         return current_branch, branch_analyses
@@ -102,35 +127,159 @@ class ProjectAnalyzer:
             return "unknown"
     
     def _get_all_branches(self, repo_path: Path) -> List[str]:
-        """Get all local branches."""
+        """Get all local and remote branches."""
         try:
+            # Get ALL branches (local and remote) using git branch -a
             result = subprocess.run(
-                ['git', 'branch', '--format=%(refname:short)'],
+                ['git', 'branch', '-a'],
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
                 check=True
             )
-            branches = [b.strip() for b in result.stdout.split('\n') if b.strip()]
-            return branches
+            
+            branches_set = set()  # Use set to avoid duplicates
+            local_branches = []
+            remote_branches = []
+            
+            for line in result.stdout.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                # Remove the * marker for current branch
+                if line.startswith('*'):
+                    line = line[1:].strip()
+                
+                if line.startswith('remotes/'):
+                    # Handle remote branches
+                    # Skip HEAD references (like "remotes/origin/HEAD -> origin/main")
+                    if '->' in line or 'HEAD' in line:
+                        continue
+                    
+                    # Extract branch name from remotes/origin/branch-name
+                    parts = line.split('/')
+                    if len(parts) >= 3:
+                        # Get everything after 'remotes/origin/'
+                        branch_name = '/'.join(parts[2:])
+                        remote_branches.append(branch_name)
+                        branches_set.add(branch_name)
+                else:
+                    # Local branch
+                    local_branches.append(line)
+                    branches_set.add(line)
+            
+            # Log what we found
+            logger.debug(f"Found {len(local_branches)} local branches: {local_branches}")
+            logger.debug(f"Found {len(remote_branches)} remote branches: {remote_branches}")
+            
+            # Convert set to sorted list for consistent ordering
+            all_branches = sorted(list(branches_set))
+            
+            # If we only found one branch and it's main/master, try to fetch all remote branches
+            if len(all_branches) == 1 and all_branches[0] in ['main', 'master']:
+                logger.info("Only found main/master branch, fetching all remote branches...")
+                try:
+                    # Fetch all remote branches
+                    subprocess.run(
+                        ['git', 'fetch', '--all'],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    # Recursively call ourselves to get the updated branch list
+                    return self._get_all_branches(repo_path)
+                except subprocess.CalledProcessError:
+                    logger.warning("Failed to fetch remote branches")
+            
+            return all_branches
+            
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to get branches: {e}")
+            logger.error(f"Failed to get branches: {e.stderr if e.stderr else str(e)}")
             return []
     
     def _checkout_branch(self, repo_path: Path, branch: str) -> bool:
-        """Checkout a specific branch."""
+        """Checkout a specific branch, creating local tracking branch if needed."""
         try:
-            subprocess.run(
-                ['git', 'checkout', branch],
+            # First check if the branch already exists locally
+            check_local = subprocess.run(
+                ['git', 'rev-parse', '--verify', branch],
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
-                check=True
+                check=False
             )
-            logger.info(f"  Checked out branch: {branch}")
-            return True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"  Failed to checkout branch {branch}: {e}")
+            
+            if check_local.returncode == 0:
+                # Local branch exists, just checkout (no -b flag)
+                result = subprocess.run(
+                    ['git', 'checkout', branch],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    check=False
+                )
+                
+                if result.returncode == 0:
+                    logger.info(f"    Successfully checked out existing local branch: {branch}")
+                    if result.stderr:
+                        logger.debug(f"    Git output: {result.stderr.strip()}")
+                    return True
+                else:
+                    logger.error(f"    Failed to checkout existing branch {branch}: {result.stderr}")
+                    return False
+            
+            # Branch doesn't exist locally, check if it exists as a remote branch
+            logger.debug(f"    Branch {branch} not found locally, checking remote...")
+            
+            remote_branch = f"origin/{branch}"
+            check_remote = subprocess.run(
+                ['git', 'rev-parse', '--verify', remote_branch],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            if check_remote.returncode == 0:
+                # Remote branch exists, create local tracking branch with -b
+                logger.info(f"    Creating local tracking branch from {remote_branch}...")
+                result = subprocess.run(
+                    ['git', 'checkout', '-b', branch, remote_branch],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    check=False
+                )
+                
+                if result.returncode == 0:
+                    logger.info(f"    Created and checked out tracking branch: {branch} -> {remote_branch}")
+                    return True
+                else:
+                    # If that failed, maybe the branch name has special characters
+                    # Try alternative: checkout with --track
+                    result = subprocess.run(
+                        ['git', 'checkout', '--track', remote_branch],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        check=False
+                    )
+                    
+                    if result.returncode == 0:
+                        logger.info(f"    Successfully checked out tracking branch: {branch}")
+                        return True
+                    else:
+                        logger.error(f"    Failed to create tracking branch: {result.stderr}")
+                        return False
+            
+            # Branch doesn't exist locally or remotely
+            logger.error(f"    Branch {branch} not found locally or remotely")
+            return False
+            
+        except Exception as e:
+            logger.error(f"    Unexpected error checking out branch {branch}: {str(e)}")
             return False
     
     def analyze_repository(self, repo_path: Path, branch_context: Optional[str] = None) -> Dict:

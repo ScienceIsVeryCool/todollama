@@ -45,8 +45,19 @@ class GitAutomator:
             if str(self.working_dir).startswith(tempfile.gettempdir()):
                 shutil.rmtree(self.working_dir, ignore_errors=True)
     
-    def _run_git_command(self, command: list, cwd: Optional[Path] = None) -> str:
-        """Execute a git command and return the output."""
+    def _run_git_command(self, command: list, cwd: Optional[Path] = None, 
+                        capture_output: bool = True, check: bool = True) -> subprocess.CompletedProcess:
+        """Execute a git command and return the result.
+        
+        Args:
+            command: Git command as list of strings
+            cwd: Working directory (defaults to repo_path)
+            capture_output: Whether to capture stdout/stderr
+            check: Whether to raise exception on non-zero return code
+            
+        Returns:
+            CompletedProcess object with returncode, stdout, stderr
+        """
         work_dir = cwd or self.repo_path or self.working_dir
         
         try:
@@ -54,11 +65,19 @@ class GitAutomator:
             result = subprocess.run(
                 command,
                 cwd=work_dir,
-                capture_output=True,
+                capture_output=capture_output,
                 text=True,
-                check=True
+                check=check
             )
-            return result.stdout.strip()
+            
+            # For backward compatibility, if check=True and capture_output=True,
+            # return the result object but also allow accessing stdout as before
+            if check and capture_output:
+                # Add a string representation for backward compatibility
+                result.stdout_stripped = result.stdout.strip() if result.stdout else ""
+                
+            return result
+            
         except subprocess.CalledProcessError as e:
             error_msg = f"Git command failed: {' '.join(command)}\nError: {e.stderr}"
             logger.error(error_msg)
@@ -80,14 +99,43 @@ class GitAutomator:
         return self.repo_path
     
     def checkout_branch(self, branch_name: str) -> str:
-        """Create and checkout a new branch."""
+        """Checkout a branch, creating it if it doesn't exist."""
         if not self.repo_path:
             raise GitOperationError("No repository cloned. Call clone_repository first.")
         
-        logger.info(f"Creating and checking out branch: {branch_name}")
-        self._run_git_command(['git', 'checkout', '-b', branch_name])
-        logger.info(f"Successfully checked out branch: {branch_name}")
-        return branch_name
+        # First check if the branch already exists (locally or remotely)
+        try:
+            # Check if branch exists locally
+            result = self._run_git_command(['git', 'rev-parse', '--verify', branch_name], 
+                                          capture_output=True, check=False)
+            
+            if result.returncode == 0:
+                # Branch exists locally, just checkout (no -b)
+                logger.info(f"Checking out existing branch: {branch_name}")
+                self._run_git_command(['git', 'checkout', branch_name])
+                logger.info(f"Successfully checked out existing branch: {branch_name}")
+                return branch_name
+            
+            # Check if branch exists as remote
+            remote_branch = f"origin/{branch_name}"
+            result = self._run_git_command(['git', 'rev-parse', '--verify', remote_branch],
+                                          capture_output=True, check=False)
+            
+            if result.returncode == 0:
+                # Remote branch exists, create tracking branch
+                logger.info(f"Creating tracking branch from remote: {branch_name}")
+                self._run_git_command(['git', 'checkout', '-b', branch_name, remote_branch])
+                logger.info(f"Successfully created and checked out tracking branch: {branch_name}")
+                return branch_name
+            
+            # Branch doesn't exist anywhere, create new
+            logger.info(f"Creating new branch: {branch_name}")
+            self._run_git_command(['git', 'checkout', '-b', branch_name])
+            logger.info(f"Successfully created and checked out new branch: {branch_name}")
+            return branch_name
+            
+        except subprocess.CalledProcessError as e:
+            raise GitOperationError(f"Failed to checkout branch {branch_name}: {e}")
     
     def make_changes(self) -> list:
         """
@@ -157,7 +205,8 @@ class GitAutomator:
         self._run_git_command(['git', 'commit', '-m', message])
         
         # Get commit hash
-        commit_hash = self._run_git_command(['git', 'rev-parse', 'HEAD'])
+        result = self._run_git_command(['git', 'rev-parse', 'HEAD'])
+        commit_hash = result.stdout.strip()
         logger.info(f"Successfully committed: {commit_hash[:8]}")
         
         return commit_hash
@@ -171,13 +220,14 @@ class GitAutomator:
         
         # Get current branch if not specified
         if not branch:
-            branch = self._run_git_command(['git', 'branch', '--show-current'])
+            result = self._run_git_command(['git', 'branch', '--show-current'])
+            branch = result.stdout.strip()
         
         # Push changes
-        push_output = self._run_git_command(['git', 'push', 'origin', branch])
+        result = self._run_git_command(['git', 'push', 'origin', branch])
         logger.info("Successfully pushed changes")
         
-        return push_output
+        return branch
     
     def run_full_workflow(self, git_url: str, branch_name: Optional[str] = None, 
                          commit_message: Optional[str] = None) -> dict:
