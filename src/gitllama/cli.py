@@ -20,10 +20,13 @@ def create_parser() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   gitllama https://github.com/user/repo.git
-  gitllama https://github.com/user/repo.git --model gemma3:4b
-  gitllama https://github.com/user/repo.git --branch my-feature
+  gitllama https://github.com/user/repo.git --branch my-feature  
   gitllama https://github.com/user/repo.git --message "Custom commit message"
-  gitllama https://github.com/user/repo.git --no-ai  # Disable AI
+  gitllama https://github.com/user/repo.git --model llama3:8b
+  gitllama https://github.com/user/repo.git --verbose
+
+GitLlama uses AI to intelligently analyze repositories and make improvements.
+Requires Ollama to be running with a compatible model.
         """
     )
     
@@ -35,7 +38,7 @@ Examples:
     parser.add_argument(
         "--branch", "-b",
         default=None,
-        help="Branch name to create (AI will decide if not specified)"
+        help="Branch name to use (AI will decide if not specified)"
     )
     
     parser.add_argument(
@@ -55,11 +58,6 @@ Examples:
         help="Ollama server URL (default: http://localhost:11434)"
     )
     
-    parser.add_argument(
-        "--no-ai",
-        action="store_true",
-        help="Disable AI and use simple automation"
-    )
     
     
     parser.add_argument(
@@ -84,25 +82,25 @@ def main() -> int:
     )
     
     try:
-        # Create AI coordinator if not disabled
-        ai_coordinator = None
-        if not args.no_ai:
-            print(f"🤖 Initializing AI with model: {args.model}")
-            ai_coordinator = AICoordinator(
-                model=args.model,
-                base_url=args.ollama_url
-            )
-            
-            # Test Ollama connection
-            if not ai_coordinator.client.is_available():
-                print("⚠️  Warning: Ollama server not available. Falling back to simple automation.")
-                print("   To use AI features, ensure Ollama is running: ollama serve")
-                ai_coordinator = None
+        # Initialize AI coordinator (always enabled)
+        print(f"🤖 Initializing GitLlama with AI model: {args.model}")
+        ai_coordinator = AICoordinator(
+            model=args.model,
+            base_url=args.ollama_url
+        )
         
-        # Run the workflow (always uses enhanced AI decision-making)
+        # Test Ollama connection
+        if not ai_coordinator.client.is_available():
+            print("⚠️  Warning: Ollama server not available.")
+            print("   GitLlama requires Ollama for AI features. Please ensure Ollama is running:")
+            print("   Install: https://ollama.ai")
+            print("   Start: ollama serve")
+            print("   Pull model: ollama pull gemma3:4b")
+            return 1
+        
+        # Run the AI-powered workflow
+        print("🚀 Running AI workflow with intelligent decision-making...")
         with GitAutomator(ai_coordinator=ai_coordinator) as automator:
-            if ai_coordinator:
-                print("🚀 Running AI workflow with intelligent decision-making...")
             results = automator.run_full_workflow(
                 git_url=args.git_url,
                 branch_name=args.branch,

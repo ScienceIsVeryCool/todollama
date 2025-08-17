@@ -1,17 +1,17 @@
 # GitLlama 🦙🤖
 
-AI-powered git automation tool with deep project understanding. GitLlama v0.3.0 uses hierarchical AI analysis and intelligent branch selection to clone, analyze, optimize, commit, and push your code.
+AI-powered git automation tool with deep project understanding. GitLlama v0.4.0 uses hierarchical AI analysis and intelligent single-word decision-making to clone, analyze, optimize, commit, and push your code.
 
 ## 🌟 Key Features
 
 - **🧠 Deep Project Analysis**: Hierarchical summarization system that understands entire codebases
-- **🌿 Intelligent Branch Selection**: AI analyzes existing branches and intelligently decides whether to reuse or create new ones
-- **📊 Smart Chunking**: Automatically splits large repositories to fit AI context windows
-- **🔄 Merge-Sort Summarization**: Combines multiple analyses into comprehensive understanding
-- **🎯 Intelligent Decision Making**: AI makes context-aware decisions at every step
-- **📝 Detailed Logging**: See exactly how your project is being analyzed
-- **🔧 Extensible Architecture**: Easy to add new analysis steps
-- **⚡ Fallback Mode**: Works without AI for simple automation
+- **🎯 Single-Word Decision System**: AI makes deterministic decisions with fuzzy matching for reliability
+- **🌿 Intelligent Branch Selection**: AI analyzes existing branches and decides whether to reuse or create new ones
+- **📝 TODO.md Integration**: Detects and follows project owner guidance from TODO.md files
+- **📊 Smart File Operations**: AI selects up to 5 files to create, modify, or delete intelligently
+- **🔄 Guided Questions**: AI asks strategic questions throughout analysis for better understanding
+- **📈 Synthesis & Recommendations**: Provides actionable next steps and development priorities
+- **📝 Detailed Decision Tracking**: See every AI decision with confidence scores and reasoning
 
 ## 🚀 Installation
 
@@ -21,7 +21,7 @@ pip install gitllama
 
 ## 📋 Prerequisites
 
-For AI features, you need Ollama running locally:
+GitLlama requires Ollama for AI-powered features:
 
 ```bash
 # Install Ollama (if not already installed)
@@ -30,13 +30,13 @@ curl -fsSL https://ollama.com/install.sh | sh
 # Start Ollama server
 ollama serve
 
-# Pull a model (recommended for this tool)
+# Pull a recommended model
 ollama pull gemma3:4b
 ```
 
 ## 💻 Usage
 
-### Basic AI-powered usage:
+### Basic usage (recommended):
 
 ```bash
 gitllama https://github.com/user/repo.git
@@ -45,7 +45,7 @@ gitllama https://github.com/user/repo.git
 ### With custom model:
 
 ```bash
-gitllama https://github.com/user/repo.git --model codellama:7b
+gitllama https://github.com/user/repo.git --model llama3:8b
 ```
 
 ### Manual branch name (AI still handles other decisions):
@@ -60,13 +60,7 @@ gitllama https://github.com/user/repo.git --branch feature/my-improvement
 gitllama https://github.com/user/repo.git --message "feat: add new feature"
 ```
 
-### Disable AI (simple automation):
-
-```bash
-gitllama https://github.com/user/repo.git --no-ai
-```
-
-### Verbose mode (see detailed analysis):
+### Verbose mode (see all AI decisions):
 
 ```bash
 gitllama https://github.com/user/repo.git --verbose
