@@ -392,17 +392,50 @@ class ReportGenerator:
         }
         .qa-expand-btn:hover { background: #e0e7ff; }
         .qa-full-answer { 
-            position: fixed; top: 50%; left: 50%; 
-            transform: translate(-50%, -50%);
-            width: 90vw; max-width: 1000px; max-height: 80vh;
-            z-index: 1000; background: white; 
-            border: 1px solid #e2e8f0; border-radius: 12px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
-            overflow-y: auto;
-        }
-        .qa-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.2); z-index: 999;
+            z-index: 1000; background: rgba(0,0,0,0.4);
+            display: flex; align-items: center; justify-content: center;
+            padding: 2rem;
+        }
+        .file-preview-btn {
+            display: inline-block; padding: 0.5rem 1rem; border-radius: 6px;
+            transition: background 0.2s; cursor: pointer; margin-top: 0.5rem;
+        }
+        .file-preview-btn:hover { background: #e0e7ff; }
+        .file-preview-modal { 
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 1000; background: rgba(0,0,0,0.4);
+            display: flex; align-items: center; justify-content: center;
+            padding: 2rem;
+        }
+        .file-preview-content {
+            background: white; border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            width: 100%; max-width: 1200px; max-height: 90vh;
+            overflow-y: auto; border: 1px solid #e2e8f0;
+        }
+        .decision-hover {
+            position: relative; cursor: help;
+            border-bottom: 1px dotted #667eea;
+        }
+        .decision-tooltip {
+            position: absolute; top: 100%; left: 50%;
+            transform: translateX(-50%);
+            background: #2d3748; color: white; padding: 0.75rem 1rem;
+            border-radius: 6px; font-size: 0.85rem; line-height: 1.4;
+            white-space: nowrap; max-width: 300px; white-space: normal;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1001; opacity: 0; visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            margin-top: 0.25rem;
+        }
+        .decision-tooltip::before {
+            content: ''; position: absolute; bottom: 100%; left: 50%;
+            transform: translateX(-50%); border: 4px solid transparent;
+            border-bottom-color: #2d3748;
+        }
+        .decision-hover:hover .decision-tooltip {
+            opacity: 1; visibility: visible;
         }
         .section-header { 
             cursor: pointer; user-select: none; 
@@ -536,18 +569,19 @@ class ReportGenerator:
                                 <div class="qa-expand-btn" onclick="openQAAnswer(this, '{{ loop.index }}')">
                                     <small style="color: #667eea; cursor: pointer;">📖 View Full Answer</small>
                                 </div>
-                                <div class="qa-full-answer" id="qa-modal-{{ loop.index }}" style="display: none;">
-                                    <div class="qa-overlay" onclick="closeAllQAAnswers()"></div>
-                                    <div style="padding: 2rem;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid #e2e8f0;">
-                                            <div>
-                                                <h3 style="margin: 0; color: #2d3748;">Full Answer</h3>
-                                                <p style="margin: 0.5rem 0 0 0; color: #64748b; font-size: 0.9rem;">{{ qa.question }}</p>
+                                <div class="qa-full-answer" id="qa-modal-{{ loop.index }}" style="display: none;" onclick="closeAllQAAnswers()">
+                                    <div class="file-preview-content" onclick="event.stopPropagation()">
+                                        <div style="padding: 2rem;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid #e2e8f0;">
+                                                <div>
+                                                    <h3 style="margin: 0; color: #2d3748;">Full Answer</h3>
+                                                    <p style="margin: 0.5rem 0 0 0; color: #64748b; font-size: 0.9rem;">{{ qa.question }}</p>
+                                                </div>
+                                                <button onclick="closeAllQAAnswers()" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem; cursor: pointer; color: #64748b; font-size: 1.2rem; width: 2.5rem; height: 2.5rem;">×</button>
                                             </div>
-                                            <button onclick="closeAllQAAnswers()" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem; cursor: pointer; color: #64748b; font-size: 1.2rem; width: 2.5rem; height: 2.5rem;">×</button>
-                                        </div>
-                                        <div style="font-size: 1.1rem; line-height: 1.7; color: #374151; padding-right: 1rem;">
-                                            {{ qa.answer|replace('\n', '<br>')|safe }}
+                                            <div style="font-size: 1.1rem; line-height: 1.7; color: #374151; padding-right: 1rem;">
+                                                {{ qa.answer|replace('\n', '<br>')|safe }}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -568,7 +602,17 @@ class ReportGenerator:
                         <td>{{ decision.timestamp.strftime('%H:%M:%S') }}</td>
                         <td>Single-Word</td>
                         <td>{{ decision.question }}</td>
-                        <td><strong>{{ decision.selected }}</strong> (from: {{ decision.options|join(', ') }})</td>
+                        <td>
+                            <div class="decision-hover">
+                                <strong>{{ decision.selected }}</strong> (from: {{ decision.options|join(', ') }})
+                                <div class="decision-tooltip">
+                                    {% if decision.reasoning %}
+                                    <strong>Reasoning:</strong> {{ decision.reasoning }}<br>
+                                    {% endif %}
+                                    <strong>Raw Response:</strong> "{{ decision.context[:100] }}{% if decision.context|length > 100 %}...{% endif %}"
+                                </div>
+                            </div>
+                        </td>
                         <td>
                             <span class="confidence confidence-{% if decision.confidence > 0.8 %}high{% elif decision.confidence > 0.6 %}medium{% else %}low{% endif %}">
                                 {{ "%.0f"|format(decision.confidence * 100) }}%
@@ -638,11 +682,29 @@ class ReportGenerator:
                 <div class="file-op-content">
                     <p><strong>Reason:</strong> {{ op.reason }}</p>
                     {% if op.content_preview %}
-                    <div class="collapsible" onclick="toggleCollapsible(this)">
-                        <strong>📄 Content Preview</strong>
+                    <div class="file-preview-btn" onclick="openFilePreview('{{ loop.index }}', '{{ op.file_path }}', '{{ op.operation }}')">
+                        <strong style="color: #667eea; cursor: pointer;">📄 View File Content</strong>
                     </div>
-                    <div class="collapsible-content">
-                        {{ op.highlighted_content|safe }}
+                    <div class="file-preview-modal" id="file-modal-{{ loop.index }}" style="display: none;" onclick="closeAllFilePreviews()">
+                        <div class="file-preview-content" onclick="event.stopPropagation()">
+                            <div style="padding: 1.5rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid #e2e8f0;">
+                                    <div>
+                                        <h3 style="margin: 0; color: #2d3748;">File Content Preview</h3>
+                                        <p style="margin: 0.5rem 0 0 0; color: #64748b; font-size: 0.9rem;">
+                                            <span class="operation-badge op-{{ op.operation.lower() }}">{{ op.operation }}</span>
+                                            {{ op.file_path }}
+                                        </p>
+                                    </div>
+                                    <button onclick="closeAllFilePreviews()" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem; cursor: pointer; color: #64748b; font-size: 1.2rem; width: 2.5rem; height: 2.5rem;">×</button>
+                                </div>
+                                <div style="background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; overflow: auto;">
+                                    <div style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.9rem; line-height: 1.5; padding: 1.5rem; background: #ffffff; margin: 0;">
+                                        {{ op.highlighted_content|safe }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     {% endif %}
                 </div>
@@ -734,10 +796,36 @@ class ReportGenerator:
             document.body.style.overflow = 'auto';
         }
         
+        function openFilePreview(modalId, filePath, operation) {
+            // Close any open modals first
+            closeAllQAAnswers();
+            closeAllFilePreviews();
+            
+            // Show the selected file preview modal
+            const modal = document.getElementById('file-modal-' + modalId);
+            if (modal) {
+                modal.style.display = 'block';
+                // Prevent body scrolling when modal is open
+                document.body.style.overflow = 'hidden';
+            }
+        }
+        
+        function closeAllFilePreviews() {
+            // Hide all file preview modals
+            const modals = document.querySelectorAll('.file-preview-modal');
+            modals.forEach(modal => {
+                modal.style.display = 'none';
+            });
+            
+            // Restore body scrolling
+            document.body.style.overflow = 'auto';
+        }
+        
         // Close modal when pressing Escape key
         document.addEventListener('keydown', function(event) {
             if (event.key === 'Escape') {
                 closeAllQAAnswers();
+                closeAllFilePreviews();
             }
         });
         
