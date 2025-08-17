@@ -256,6 +256,14 @@ Content:"""
             
             try:
                 if op['operation'] == 'CREATE':
+                    # Check if file already exists
+                    file_exists = file_path.exists()
+                    warning_msg = ""
+                    
+                    if file_exists:
+                        warning_msg = "⚠️ CREATE operation overwrote existing file"
+                        logger.warning(f"CREATE operation will overwrite existing file: {op['file_path']}")
+                    
                     # Create directory if needed
                     file_path.parent.mkdir(parents=True, exist_ok=True)
                     
@@ -268,8 +276,11 @@ Content:"""
                     
                     # Hook into report generator
                     if self.report_generator:
+                        reason = op.get('reason', 'AI decision')
+                        if warning_msg:
+                            reason = f"{reason} ({warning_msg})"
                         self.report_generator.add_file_operation(
-                            "CREATE", op['file_path'], op.get('reason', 'AI decision'),
+                            "CREATE", op['file_path'], reason,
                             content=op.get('content', '')
                         )
                 
@@ -296,7 +307,16 @@ Content:"""
                                 diff=f"Original length: {len(original_content)}, New length: {len(op.get('content', ''))}"
                             )
                     else:
+                        warning_msg = "⚠️ MODIFY operation attempted on non-existent file"
                         logger.warning(f"File to modify does not exist: {op['file_path']}")
+                        
+                        # Hook into report generator to record the failed operation
+                        if self.report_generator:
+                            reason = f"{op.get('reason', 'AI decision')} ({warning_msg})"
+                            self.report_generator.add_file_operation(
+                                "MODIFY", op['file_path'], reason,
+                                content="[Operation failed - file not found]"
+                            )
                 
                 elif op['operation'] == 'DELETE':
                     if file_path.exists():
@@ -310,7 +330,16 @@ Content:"""
                                 "DELETE", op['file_path'], op.get('reason', 'AI decision')
                             )
                     else:
+                        warning_msg = "⚠️ DELETE operation attempted on non-existent file"
                         logger.warning(f"File to delete does not exist: {op['file_path']}")
+                        
+                        # Hook into report generator to record the failed operation
+                        if self.report_generator:
+                            reason = f"{op.get('reason', 'AI decision')} ({warning_msg})"
+                            self.report_generator.add_file_operation(
+                                "DELETE", op['file_path'], reason,
+                                content="[Operation failed - file not found]"
+                            )
                 
             except Exception as e:
                 logger.error(f"Failed to execute {op['operation']} on {op['file_path']}: {e}")

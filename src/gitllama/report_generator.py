@@ -173,6 +173,14 @@ class ReportGenerator:
     def set_executive_summary(self, repo_path: str, branch: str, modified_files: List[str], 
                             commit_hash: str, success: bool, total_decisions: int):
         """Set the executive summary data."""
+        total_workflow_time = (datetime.now() - self.start_time).total_seconds()
+        tracked_phases_time = sum(self.metrics["processing_times"].values())
+        untracked_time = max(0, total_workflow_time - tracked_phases_time)
+        
+        # Add untracked time to metrics
+        if untracked_time > 0:
+            self.metrics["processing_times"]["File Operations & Git"] = untracked_time
+        
         self.executive_summary = {
             "repo_url": self.repo_url,
             "repo_path": repo_path,
@@ -183,7 +191,7 @@ class ReportGenerator:
             "total_ai_decisions": total_decisions,
             "total_guided_questions": len(self.guided_questions),
             "total_file_operations": len(self.file_operations),
-            "execution_time": (datetime.now() - self.start_time).total_seconds()
+            "execution_time": total_workflow_time
         }
         logger.debug("Set executive summary data")
     
@@ -365,10 +373,37 @@ class ReportGenerator:
         .op-create { background: #dcfce7; color: #166534; }
         .op-modify { background: #dbeafe; color: #1e40af; }
         .op-delete { background: #fee2e2; color: #991b1b; }
+        .warning-badge { 
+            background: #fef3c7; color: #92400e; border: 1px solid #f59e0b;
+            padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;
+            margin-left: 0.5rem; font-weight: 600;
+        }
+        .file-op.has-warning { border-left: 4px solid #f59e0b; }
+        .file-op.has-warning .file-op-header { background: #fffbeb; }
         .collapsible { cursor: pointer; user-select: none; }
         .collapsible:hover { background: #f8fafc; }
         .collapsible-content { display: none; padding: 1rem; background: #f8fafc; }
         .collapsible.active + .collapsible-content { display: block; }
+        .qa-answer-preview { position: relative; }
+        .qa-expand-btn { 
+            display: inline-block; margin-left: 0.5rem; 
+            padding: 0.25rem 0.5rem; border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .qa-expand-btn:hover { background: #e0e7ff; }
+        .qa-full-answer { 
+            position: fixed; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%);
+            width: 90vw; max-width: 1000px; max-height: 80vh;
+            z-index: 1000; background: white; 
+            border: 1px solid #e2e8f0; border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            overflow-y: auto;
+        }
+        .qa-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.2); z-index: 999;
+        }
         .section-header { 
             cursor: pointer; user-select: none; 
             border-radius: 8px; transition: background 0.2s;
@@ -494,7 +529,31 @@ class ReportGenerator:
                         <td>{{ qa.timestamp.strftime('%H:%M:%S') }}</td>
                         <td>Guided Q&A</td>
                         <td>{{ qa.question }}</td>
-                        <td>{{ qa.answer[:100] }}{% if qa.answer|length > 100 %}...{% endif %}</td>
+                        <td>
+                            <div class="qa-answer-preview">
+                                {{ qa.answer[:100] }}{% if qa.answer|length > 100 %}...{% endif %}
+                                {% if qa.answer|length > 100 %}
+                                <div class="qa-expand-btn" onclick="openQAAnswer(this, '{{ loop.index }}')">
+                                    <small style="color: #667eea; cursor: pointer;">📖 View Full Answer</small>
+                                </div>
+                                <div class="qa-full-answer" id="qa-modal-{{ loop.index }}" style="display: none;">
+                                    <div class="qa-overlay" onclick="closeAllQAAnswers()"></div>
+                                    <div style="padding: 2rem;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid #e2e8f0;">
+                                            <div>
+                                                <h3 style="margin: 0; color: #2d3748;">Full Answer</h3>
+                                                <p style="margin: 0.5rem 0 0 0; color: #64748b; font-size: 0.9rem;">{{ qa.question }}</p>
+                                            </div>
+                                            <button onclick="closeAllQAAnswers()" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem; cursor: pointer; color: #64748b; font-size: 1.2rem; width: 2.5rem; height: 2.5rem;">×</button>
+                                        </div>
+                                        <div style="font-size: 1.1rem; line-height: 1.7; color: #374151; padding-right: 1rem;">
+                                            {{ qa.answer|replace('\n', '<br>')|safe }}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </td>
                         <td>
                             {% if qa.confidence %}
                             <span class="confidence confidence-{% if qa.confidence > 0.8 %}high{% elif qa.confidence > 0.6 %}medium{% else %}low{% endif %}">
@@ -565,11 +624,14 @@ class ReportGenerator:
             <div class="section-content">
             {% if file_operations %}
             {% for op in file_operations %}
-            <div class="file-op">
+            <div class="file-op{% if '⚠️' in op.reason %} has-warning{% endif %}">
                 <div class="file-op-header">
                     <div>
                         <span class="operation-badge op-{{ op.operation.lower() }}">{{ op.operation }}</span>
                         <strong>{{ op.file_path }}</strong>
+                        {% if '⚠️' in op.reason %}
+                        <span class="warning-badge">⚠️ WARNING</span>
+                        {% endif %}
                     </div>
                     <small>{{ op.timestamp.strftime('%H:%M:%S') }}</small>
                 </div>
@@ -647,6 +709,37 @@ class ReportGenerator:
         function toggleCollapsible(element) {
             element.classList.toggle('active');
         }
+        
+        function openQAAnswer(button, modalId) {
+            // Close any currently open Q&A answers
+            closeAllQAAnswers();
+            
+            // Show the selected modal
+            const modal = document.getElementById('qa-modal-' + modalId);
+            if (modal) {
+                modal.style.display = 'block';
+                // Prevent body scrolling when modal is open
+                document.body.style.overflow = 'hidden';
+            }
+        }
+        
+        function closeAllQAAnswers() {
+            // Hide all Q&A modals
+            const modals = document.querySelectorAll('.qa-full-answer');
+            modals.forEach(modal => {
+                modal.style.display = 'none';
+            });
+            
+            // Restore body scrolling
+            document.body.style.overflow = 'auto';
+        }
+        
+        // Close modal when pressing Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeAllQAAnswers();
+            }
+        });
         
         function toggleSection(header) {
             const content = header.nextElementSibling;
