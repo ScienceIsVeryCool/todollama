@@ -21,17 +21,13 @@ class OllamaClient:
         self.session = requests.Session()
         self.model_context_sizes = {
             # Common Ollama models and their approximate context sizes
-            "llama3.2:3b": 4096,
-            "llama3.2:1b": 2048,
-            "llama3.1:8b": 8192,
-            "codellama:7b": 4096,
-            "mistral:7b": 8192,
-            "gemma2:2b": 8192,
-            "phi3:mini": 4096,
-            "gemma3:4b": 124000,
+            "gemma3:270m": 32000,
+            "gemma3:1b": 32000,
+            "gemma3:12b": 128000,
+            "gemma3:4b": 128000,
 
             # Default fallback
-            "default": 4096
+            "default": 16000
         }
     
     def is_available(self) -> bool:
