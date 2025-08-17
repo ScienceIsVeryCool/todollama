@@ -188,15 +188,15 @@ class GitAutomator:
             # Step 1: Clone repository
             repo_path = self.clone_repository(git_url)
             
-            # AI Step: Explore and understand the project
+            # AI Step: Explore and understand the project (with all branches)
             project_info = {}
             if self.ai_coordinator:
-                project_info = self.ai_coordinator.explore_repository(repo_path)
+                project_info = self.ai_coordinator.explore_repository(repo_path, analyze_all_branches=True)
                 logger.info(f"AI Project Analysis: {project_info}")
             
             # Step 2: Checkout branch (AI decides if coordinator available)
             if not branch_name and self.ai_coordinator:
-                branch_name = self.ai_coordinator.decide_branch_name(project_info)
+                branch_name = self.ai_coordinator.decide_branch_name(self.repo_path, project_info)
                 logger.info(f"AI selected branch name: {branch_name}")
             elif not branch_name:
                 branch_name = "gitllama-automation"

@@ -5,6 +5,7 @@ Hierarchical AI-powered repository analysis with clearly defined steps
 
 import json
 import logging
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from .ollama_client import OllamaClient
@@ -34,7 +35,105 @@ class ProjectAnalyzer:
         logger.info(f"Context window size: {self.max_context_size} tokens")
         logger.info(f"Usable context size: {self.usable_context_size} tokens")
     
-    def analyze_repository(self, repo_path: Path) -> Dict:
+    def analyze_all_branches(self, repo_path: Path) -> Tuple[str, Dict[str, Dict]]:
+        """Analyze all branches in the repository.
+        
+        This method analyzes the current branch and all other branches.
+        
+        Args:
+            repo_path: Path to the repository
+            
+        Returns:
+            Tuple of (current_branch_name, dict of branch_name -> analysis)
+        """
+        logger.info("=" * 60)
+        logger.info("ANALYZING ALL REPOSITORY BRANCHES")
+        logger.info("=" * 60)
+        
+        # Get current branch
+        current_branch = self._get_current_branch(repo_path)
+        logger.info(f"Current branch: {current_branch}")
+        
+        # Get all branches
+        all_branches = self._get_all_branches(repo_path)
+        logger.info(f"Found {len(all_branches)} total branches")
+        
+        # Analyze each branch
+        branch_analyses = {}
+        
+        for i, branch in enumerate(all_branches, 1):
+            logger.info(f"\n{'=' * 60}")
+            logger.info(f"ANALYZING BRANCH {i}/{len(all_branches)}: {branch}")
+            logger.info(f"{'=' * 60}")
+            
+            # Checkout the branch
+            if branch != current_branch:
+                self._checkout_branch(repo_path, branch)
+            
+            # Analyze the branch
+            analysis = self.analyze_repository(repo_path, branch_context=branch)
+            branch_analyses[branch] = analysis
+            
+            logger.info(f"Branch '{branch}' analysis complete")
+        
+        # Return to original branch
+        if current_branch in all_branches:
+            self._checkout_branch(repo_path, current_branch)
+        
+        logger.info(f"\n{'=' * 60}")
+        logger.info(f"ALL BRANCHES ANALYZED SUCCESSFULLY")
+        logger.info(f"{'=' * 60}\n")
+        
+        return current_branch, branch_analyses
+    
+    def _get_current_branch(self, repo_path: Path) -> str:
+        """Get the current branch name."""
+        try:
+            result = subprocess.run(
+                ['git', 'branch', '--show-current'],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to get current branch: {e}")
+            return "unknown"
+    
+    def _get_all_branches(self, repo_path: Path) -> List[str]:
+        """Get all local branches."""
+        try:
+            result = subprocess.run(
+                ['git', 'branch', '--format=%(refname:short)'],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            branches = [b.strip() for b in result.stdout.split('\n') if b.strip()]
+            return branches
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to get branches: {e}")
+            return []
+    
+    def _checkout_branch(self, repo_path: Path, branch: str) -> bool:
+        """Checkout a specific branch."""
+        try:
+            subprocess.run(
+                ['git', 'checkout', branch],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            logger.info(f"  Checked out branch: {branch}")
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"  Failed to checkout branch {branch}: {e}")
+            return False
+    
+    def analyze_repository(self, repo_path: Path, branch_context: Optional[str] = None) -> Dict:
         """Main entry point for repository analysis.
         
         This method orchestrates the entire analysis pipeline.
@@ -42,11 +141,14 @@ class ProjectAnalyzer:
         
         Args:
             repo_path: Path to the repository
+            branch_context: Optional branch name for context in prompts
             
         Returns:
             Complete analysis dictionary
         """
         logger.info(f"Starting hierarchical repository analysis")
+        if branch_context:
+            logger.info(f"Branch context: {branch_context}")
         logger.info("=" * 60)
         
         # ============================================================
@@ -65,7 +167,8 @@ class ProjectAnalyzer:
                 "analysis_metadata": {
                     "total_files": 0,
                     "total_tokens": 0,
-                    "chunks_created": 0
+                    "chunks_created": 0,
+                    "branch": branch_context
                 }
             }
         
@@ -81,7 +184,7 @@ class ProjectAnalyzer:
         # Analyze each chunk independently
         # ============================================================
         logger.info("STEP 3: CHUNK ANALYSIS")
-        chunk_summaries = self._step3_analyze_chunks(chunks)
+        chunk_summaries = self._step3_analyze_chunks(chunks, branch_context)
         
         # ============================================================
         # STEP 4: HIERARCHICAL MERGING
@@ -96,6 +199,11 @@ class ProjectAnalyzer:
         # ============================================================
         logger.info("STEP 5: FORMAT RESULTS")
         result = self._step5_format_results(final_summary, all_files, chunks)
+        
+        # Add branch context to result
+        if branch_context:
+            result["branch"] = branch_context
+            result["analysis_metadata"]["branch"] = branch_context
         
         logger.info("=" * 60)
         logger.info("Repository analysis complete!")
@@ -261,7 +369,7 @@ class ProjectAnalyzer:
     # STEP 3: CHUNK ANALYSIS
     # ============================================================
     
-    def _step3_analyze_chunks(self, chunks: List[List[Dict]]) -> List[Dict]:
+    def _step3_analyze_chunks(self, chunks: List[List[Dict]], branch_context: Optional[str] = None) -> List[Dict]:
         """STEP 3: Analyze each chunk independently.
         
         This step performs AI analysis on each chunk.
@@ -273,6 +381,7 @@ class ProjectAnalyzer:
         
         Args:
             chunks: List of file chunks
+            branch_context: Optional branch name for context
             
         Returns:
             List of chunk analysis summaries
@@ -282,13 +391,14 @@ class ProjectAnalyzer:
         chunk_summaries = []
         for i, chunk in enumerate(chunks, 1):
             logger.info(f"    Processing chunk {i}/{len(chunks)}...")
-            summary = self._analyze_single_chunk(chunk, i, len(chunks))
+            summary = self._analyze_single_chunk(chunk, i, len(chunks), branch_context)
             chunk_summaries.append(summary)
             logger.info(f"    Chunk {i} analysis complete")
         
         return chunk_summaries
     
-    def _analyze_single_chunk(self, chunk: List[Dict], chunk_index: int, total_chunks: int) -> Dict:
+    def _analyze_single_chunk(self, chunk: List[Dict], chunk_index: int, total_chunks: int, 
+                             branch_context: Optional[str] = None) -> Dict:
         """Analyze a single chunk of files."""
         
         # Build context from chunk
@@ -308,7 +418,10 @@ class ProjectAnalyzer:
         context_tokens = self.client.count_tokens(context)
         logger.debug(f"      Chunk {chunk_index} context: {context_tokens} tokens")
         
-        prompt = f"""Analyze this portion of a code repository (chunk {chunk_index} of {total_chunks}):
+        # Adjust prompt based on branch context
+        branch_note = f" (Branch: {branch_context})" if branch_context else ""
+        
+        prompt = f"""Analyze this portion of a code repository{branch_note} (chunk {chunk_index} of {total_chunks}):
 
 {context}
 
@@ -318,6 +431,7 @@ Provide a comprehensive analysis including:
 3. Code quality observations
 4. Key patterns or architectural decisions
 5. Notable features or issues
+{f"6. How this branch '{branch_context}' differs from main (if apparent)" if branch_context and branch_context not in ['main', 'master'] else ""}
 
 Response in JSON format:
 {{
@@ -327,7 +441,10 @@ Response in JSON format:
     "technologies": [],
     "patterns": [],
     "quality_notes": "",
-    "key_features": []
+    "key_features": [],
+    {f'"branch_context": "{branch_context}",' if branch_context else ''}
+    {'"branch_differences": "",' if branch_context and branch_context not in ['main', 'master'] else ''}
+    "analysis_focus": ""
 }}"""
         
         messages = [{"role": "user", "content": prompt}]

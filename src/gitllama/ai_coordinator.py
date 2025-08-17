@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from .ollama_client import OllamaClient
 from .project_analyzer import ProjectAnalyzer
+from .branch_analyzer import BranchAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +22,13 @@ class AICoordinator:
         self.client = OllamaClient(base_url)
         self.context_window = []
         
-        # Initialize the project analyzer
+        # Initialize the analyzers
         self.project_analyzer = ProjectAnalyzer(self.client, model)
+        self.branch_analyzer = BranchAnalyzer(self.client, model)
         
         logger.info(f"Initialized AI Coordinator with model: {model}")
     
-    def explore_repository(self, repo_path: Path) -> Dict[str, str]:
+    def explore_repository(self, repo_path: Path, analyze_all_branches: bool = False) -> Dict:
         """Explore the repository using the dedicated ProjectAnalyzer.
         
         This delegates the complex analysis to ProjectAnalyzer which handles:
@@ -35,70 +37,92 @@ class AICoordinator:
         - Parallel analysis
         - Hierarchical merging
         - Result formatting
+        - Multi-branch analysis (if requested)
         
         Args:
             repo_path: Path to the repository
+            analyze_all_branches: Whether to analyze all branches
             
         Returns:
             Analysis results dictionary
         """
         logger.info(f"AI Coordinator delegating repository exploration to ProjectAnalyzer")
         
-        # Use the dedicated analyzer for repository exploration
-        analysis_result = self.project_analyzer.analyze_repository(repo_path)
+        if analyze_all_branches:
+            # Analyze all branches and store comprehensive results
+            current_branch, branch_analyses = self.project_analyzer.analyze_all_branches(repo_path)
+            
+            # Store branch analyses for branch selection
+            self.branch_analyses = branch_analyses
+            self.current_branch = current_branch
+            
+            # Use current branch analysis as the main result
+            analysis_result = branch_analyses.get(current_branch, {})
+            analysis_result['all_branches'] = list(branch_analyses.keys())
+            analysis_result['current_branch'] = current_branch
+        else:
+            # Single branch analysis
+            analysis_result = self.project_analyzer.analyze_repository(repo_path)
+            self.branch_analyses = None
+            self.current_branch = None
         
         # Store in context window for future reference
         self.context_window.append({
             "type": "exploration",
-            "analysis": analysis_result
+            "analysis": analysis_result,
+            "branch_analyses": self.branch_analyses if analyze_all_branches else None
         })
         
         return analysis_result
     
-    def decide_branch_name(self, project_info: Dict[str, str]) -> str:
-        """AI decides on an appropriate branch name based on project analysis."""
-        logger.info("AI deciding on branch name")
+    def decide_branch_name(self, repo_path: Path, project_info: Dict[str, str]) -> str:
+        """AI decides on an appropriate branch name using BranchAnalyzer.
         
-        # Extract key information for branch naming
-        project_type = project_info.get("project_type", "unknown")
-        technologies = project_info.get("technologies", [])
+        This now uses the intelligent BranchAnalyzer which:
+        - Analyzes existing branches
+        - Evaluates reuse potential
+        - Makes intelligent decisions about branch creation/reuse
+        - Generates appropriate branch names
         
-        prompt = f"""Based on this project analysis:
-Project Type: {project_type}
-Technologies: {', '.join(technologies[:5]) if technologies else 'unknown'}
-Purpose: {project_info.get('state', 'unknown')}
-
-Suggest a meaningful branch name for making an improvement to this repository.
-The branch name should:
-- Be specific and descriptive
-- Follow git branch naming conventions (lowercase, hyphen-separated)
-- Reflect the project type and a potential improvement
-- NOT be 'main' or 'master'
-
-Respond with ONLY the branch name, no explanation."""
+        Args:
+            repo_path: Path to the repository
+            project_info: Project analysis results
+            
+        Returns:
+            Selected or generated branch name
+        """
+        logger.info("AI deciding on branch name using BranchAnalyzer")
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
-        for chunk in self.client.chat_stream(self.model, messages):
-            response += chunk
+        # If we have branch analyses from exploration, use them
+        if hasattr(self, 'branch_analyses') and self.branch_analyses and hasattr(self, 'current_branch'):
+            branch_summaries = self.branch_analyses
+            current_branch = self.current_branch or 'main'  # Provide fallback if None
+        else:
+            # Fallback: analyze branches now if not done during exploration
+            logger.info("Branch analyses not available, analyzing now...")
+            current_branch, branch_summaries = self.project_analyzer.analyze_all_branches(repo_path)
         
-        branch_name = response.strip().replace(' ', '-').lower()
+        # Use BranchAnalyzer for intelligent branch selection
+        selected_branch, reason, metadata = self.branch_analyzer.analyze_and_select_branch(
+            repo_path, current_branch, project_info, branch_summaries
+        )
         
-        # Sanitize branch name
-        branch_name = ''.join(c if c.isalnum() or c == '-' else '-' for c in branch_name)
-        branch_name = branch_name.strip('-')
+        # Handle metadata which could be a dict or other type
+        action = metadata.get('action', 'unknown') if isinstance(metadata, dict) else 'unknown'
         
-        # Ensure we don't use main/master
-        if branch_name in ['main', 'master'] or not branch_name:
-            branch_name = 'feature-improvement'
-        
+        # Store decision in context
         self.context_window.append({
             "type": "branch_decision",
-            "branch": branch_name
+            "branch": selected_branch,
+            "reason": reason,
+            "action": action,
+            "metadata": metadata
         })
         
-        logger.info(f"AI selected branch name: {branch_name}")
-        return branch_name
+        logger.info(f"AI selected branch: {selected_branch} (Action: {action})")
+        logger.info(f"Reason: {reason}")
+        
+        return selected_branch
     
     def decide_file_operations(self, repo_path: Path, project_info: Dict[str, str]) -> List[Dict[str, str]]:
         """AI decides what file operations to perform based on deep project understanding."""
