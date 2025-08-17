@@ -61,7 +61,7 @@ class GitAutomator:
         work_dir = cwd or self.repo_path or self.working_dir
         
         try:
-            logger.info(f"Running: {' '.join(command)}")
+            logger.info(f"🔧 Git operation: {' '.join(command)}")
             result = subprocess.run(
                 command,
                 cwd=work_dir,
@@ -79,13 +79,22 @@ class GitAutomator:
             return result
             
         except subprocess.CalledProcessError as e:
-            error_msg = f"Git command failed: {' '.join(command)}\nError: {e.stderr}"
+            # Get both stderr and stdout for better error messages
+            stderr_msg = e.stderr.strip() if e.stderr else "No error details available"
+            stdout_msg = e.stdout.strip() if e.stdout else ""
+            
+            # Combine error messages
+            error_details = stderr_msg
+            if stdout_msg and stdout_msg != stderr_msg:
+                error_details = f"{stderr_msg}\nOutput: {stdout_msg}"
+            
+            error_msg = f"Git command failed: {' '.join(command)}\nError: {error_details}"
             logger.error(error_msg)
             raise GitOperationError(error_msg) from e
     
     def clone_repository(self, git_url: str) -> Path:
         """Clone a git repository."""
-        logger.info(f"Cloning repository: {git_url}")
+        logger.info(f"🔧 Git: Cloning repository: {git_url}")
         
         # Extract repository name from URL
         repo_name = git_url.rstrip('/').split('/')[-1]
@@ -111,7 +120,7 @@ class GitAutomator:
             
             if result.returncode == 0:
                 # Branch exists locally, just checkout (no -b)
-                logger.info(f"Checking out existing branch: {branch_name}")
+                logger.info(f"🔧 Git: Checking out existing branch: {branch_name}")
                 self._run_git_command(['git', 'checkout', branch_name])
                 logger.info(f"Successfully checked out existing branch: {branch_name}")
                 return branch_name
@@ -123,13 +132,13 @@ class GitAutomator:
             
             if result.returncode == 0:
                 # Remote branch exists, create tracking branch
-                logger.info(f"Creating tracking branch from remote: {branch_name}")
+                logger.info(f"🔧 Git: Creating tracking branch from remote: {branch_name}")
                 self._run_git_command(['git', 'checkout', '-b', branch_name, remote_branch])
                 logger.info(f"Successfully created and checked out tracking branch: {branch_name}")
                 return branch_name
             
             # Branch doesn't exist anywhere, create new
-            logger.info(f"Creating new branch: {branch_name}")
+            logger.info(f"🔧 Git: Creating new branch: {branch_name}")
             self._run_git_command(['git', 'checkout', '-b', branch_name])
             logger.info(f"Successfully created and checked out new branch: {branch_name}")
             return branch_name
@@ -181,8 +190,22 @@ class GitAutomator:
         
         logger.info("Committing changes")
         
+        # Check if there are any changes to commit
+        status_result = self._run_git_command(['git', 'status', '--porcelain'])
+        if not status_result.stdout.strip():
+            logger.warning("No changes to commit")
+            # Return a dummy commit hash or raise an error
+            return "no-changes"
+        
         # Add all changes
+        logger.info("🔧 Git: Adding all changes to staging")
         self._run_git_command(['git', 'add', '.'])
+        
+        # Check if there are staged changes
+        diff_result = self._run_git_command(['git', 'diff', '--cached', '--stat'])
+        if not diff_result.stdout.strip():
+            logger.warning("No staged changes to commit after git add")
+            return "no-changes"
         
         # Create commit message
         if not message:
@@ -207,7 +230,7 @@ class GitAutomator:
         # Get commit hash
         result = self._run_git_command(['git', 'rev-parse', 'HEAD'])
         commit_hash = result.stdout.strip()
-        logger.info(f"Successfully committed: {commit_hash[:8]}")
+        logger.info(f"🔧 Git: Successfully committed: {commit_hash[:8]}")
         
         return commit_hash
     
@@ -216,7 +239,7 @@ class GitAutomator:
         if not self.repo_path:
             raise GitOperationError("No repository cloned. Call clone_repository first.")
         
-        logger.info("Pushing changes")
+        logger.info("🔧 Git: Pushing changes to remote")
         
         # Get current branch if not specified
         if not branch:
@@ -225,7 +248,7 @@ class GitAutomator:
         
         # Push changes
         result = self._run_git_command(['git', 'push', 'origin', branch])
-        logger.info("Successfully pushed changes")
+        logger.info("🔧 Git: Successfully pushed changes")
         
         return branch
     
@@ -259,8 +282,14 @@ class GitAutomator:
             # Step 4: Commit changes (AI generates message if coordinator available)
             commit_hash = self.commit_changes(commit_message)
             
-            # Step 5: Push changes
-            push_output = self.push_changes(branch=branch_name)
+            # Only push if we actually made a commit
+            if commit_hash != "no-changes":
+                # Step 5: Push changes
+                push_result = self.push_changes(branch=branch_name)
+                logger.info(f"Successfully pushed to branch: {branch_name}")
+            else:
+                logger.warning("No changes were committed, skipping push")
+                push_result = "no-push"
             
             logger.info("Workflow completed successfully")
             

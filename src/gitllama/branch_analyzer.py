@@ -276,6 +276,7 @@ class BranchAnalyzer:
         
         if has_good_candidates:
             # AI decides which existing branch to use
+            logger.info(f"🤖 AI: Deciding branch selection strategy with {len(reuse_candidates)} candidates")
             prompt = f"""{context}
 
 You are deciding which branch to use for making improvements to this repository.
@@ -295,6 +296,7 @@ Respond in JSON format:
 }}"""
         else:
             # No good candidates, likely need to create new
+            logger.info(f"🤖 AI: Determining new branch type (no suitable candidates found)")
             prompt = f"""{context}
 
 No suitable existing branches found for reuse (all scores < {reuse_threshold}).
@@ -411,6 +413,7 @@ Respond in JSON format:
         project_type = project_info.get('project_type', 'project')
         
         # Generate branch name with AI
+        logger.info(f"🤖 AI: Generating new {branch_type} branch name for {project_type} project")
         prompt = f"""Generate a branch name for a {branch_type} branch in a {project_type} project.
 
 The branch name should:

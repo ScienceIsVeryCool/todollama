@@ -206,6 +206,11 @@ class OllamaClient:
         Yields:
             Response chunks as strings
         """
+        # Log AI query with robot emoji
+        user_message = messages[-1]['content'] if messages else "No message"
+        query_preview = user_message[:100] + "..." if len(user_message) > 100 else user_message
+        logger.info(f"🤖 Querying {model}: {query_preview}")
+        
         payload = {
             "model": model,
             "messages": messages,

@@ -78,7 +78,7 @@ class ProjectAnalyzer:
             
             # Checkout the branch if different from current
             if branch != current_branch:
-                logger.info(f"  Switching from '{current_branch}' to '{branch}'...")
+                logger.info(f"🔧 Git: Switching from '{current_branch}' to '{branch}'...")
                 if not self._checkout_branch(repo_path, branch):
                     logger.error(f"  Failed to checkout branch '{branch}', skipping analysis")
                     continue
@@ -95,9 +95,9 @@ class ProjectAnalyzer:
         # Return to original branch
         logger.info(f"\n{'=' * 60}")
         if current_branch in all_branches:
-            logger.info(f"Returning to original branch: {current_branch}")
+            logger.info(f"🔧 Git: Returning to original branch: {current_branch}")
             if self._checkout_branch(repo_path, current_branch):
-                logger.info(f"Successfully returned to branch: {current_branch}")
+                logger.info(f"🔧 Git: Successfully returned to branch: {current_branch}")
             else:
                 logger.error(f"Failed to return to original branch: {current_branch}")
         else:
@@ -570,6 +570,9 @@ class ProjectAnalyzer:
         # Adjust prompt based on branch context
         branch_note = f" (Branch: {branch_context})" if branch_context else ""
         
+        # Log AI query
+        logger.info(f"🤖 AI: Analyzing chunk {chunk_index}/{total_chunks} for comprehensive project understanding")
+        
         prompt = f"""Analyze this portion of a code repository{branch_note} (chunk {chunk_index} of {total_chunks}):
 
 {context}
@@ -659,6 +662,7 @@ Response in JSON format:
                 return merge_recursive([left_summary, right_summary], level + 1)
             
             logger.info(f"    Level {level}: Merging {len(summaries_to_merge)} summaries ({context_tokens} tokens)")
+            logger.info(f"🤖 AI: Merging {len(summaries_to_merge)} analysis summaries into unified understanding")
             
             prompt = f"""Merge these {len(summaries_to_merge)} analyses into a unified summary:
 
