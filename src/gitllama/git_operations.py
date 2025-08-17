@@ -254,7 +254,7 @@ class GitAutomator:
     
     def run_full_workflow(self, git_url: str, branch_name: Optional[str] = None, 
                          commit_message: Optional[str] = None) -> dict:
-        """Run the complete git automation workflow with AI integration."""
+        """Run the complete git automation workflow with enhanced AI decision-making."""
         logger.info("Starting AI-powered GitLlama workflow")
         
         try:
@@ -264,48 +264,90 @@ class GitAutomator:
             # AI Step: Explore and understand the project (with all branches)
             project_info = {}
             if self.ai_coordinator:
+                logger.info("🔍 Phase 1: AI Repository Analysis")
                 project_info = self.ai_coordinator.explore_repository(repo_path, analyze_all_branches=True)
-                logger.info(f"AI Project Analysis: {project_info}")
+                logger.info("AI Project Analysis Complete")
+                
+                # Step 2: AI decides branch with enhanced decision system
+                logger.info("🔀 Phase 2: AI Branch Selection")
+                if not branch_name:
+                    branch_name = self.ai_coordinator.decide_branch_name(self.repo_path, project_info)
+                    logger.info(f"AI selected branch name: {branch_name}")
+                else:
+                    logger.info(f"Using provided branch name: {branch_name}")
+                
+                # Ensure branch_name is not None
+                if not branch_name:
+                    branch_name = "gitllama-automation"
+                
+                self.checkout_branch(branch_name)
+                
+                # Step 3: Enhanced file modification workflow
+                logger.info("📝 Phase 3: AI File Modification Workflow")
+                workflow_result = self.ai_coordinator.run_file_modification_workflow(repo_path, project_info)
+                
+                # Extract results
+                modified_files = workflow_result.get("modified_files", [])
+                commit_success = workflow_result.get("commit_success", False)
+                
+                if not commit_success or not modified_files:
+                    # Fallback to traditional method if AI workflow didn't work
+                    logger.info("Falling back to traditional file operations")
+                    modified_files = self.make_changes()
+                    commit_hash = self.commit_changes(commit_message)
+                    
+                    if commit_hash != "no-changes":
+                        self.push_changes(branch=branch_name)
+                        logger.info(f"Successfully pushed to branch: {branch_name}")
+                    else:
+                        logger.warning("No changes were committed, skipping push")
+                        commit_hash = "no-changes"
+                else:
+                    # Enhanced workflow already handled commit and push
+                    commit_hash = "ai-workflow"
+                
+                logger.info("AI workflow completed successfully")
+                
+                result = {
+                    "success": True,
+                    "repo_path": str(repo_path),
+                    "branch": branch_name,
+                    "modified_files": modified_files,
+                    "commit_hash": commit_hash,
+                    "message": "AI workflow completed successfully",
+                    "ai_analysis": project_info,
+                    "total_ai_decisions": workflow_result.get("total_decisions", 0)
+                }
+                
+                return result
             
-            # Step 2: Checkout branch (AI decides if coordinator available)
-            if not branch_name and self.ai_coordinator:
-                branch_name = self.ai_coordinator.decide_branch_name(self.repo_path, project_info)
-                logger.info(f"AI selected branch name: {branch_name}")
-            elif not branch_name:
-                branch_name = "gitllama-automation"
-            
-            self.checkout_branch(branch_name)
-            
-            # Step 3: Make changes (AI-powered if coordinator available)
-            modified_files = self.make_changes()
-            
-            # Step 4: Commit changes (AI generates message if coordinator available)
-            commit_hash = self.commit_changes(commit_message)
-            
-            # Only push if we actually made a commit
-            if commit_hash != "no-changes":
-                # Step 5: Push changes
-                push_result = self.push_changes(branch=branch_name)
-                logger.info(f"Successfully pushed to branch: {branch_name}")
             else:
-                logger.warning("No changes were committed, skipping push")
-                push_result = "no-push"
-            
-            logger.info("Workflow completed successfully")
-            
-            result = {
-                "success": True,
-                "repo_path": str(repo_path),
-                "branch": branch_name,
-                "modified_files": modified_files,
-                "commit_hash": commit_hash[:8],
-                "message": "Workflow completed successfully"
-            }
-            
-            if project_info:
-                result["ai_analysis"] = project_info
-            
-            return result
+                # No AI coordinator - use simple automation
+                if not branch_name:
+                    branch_name = "gitllama-automation"
+                
+                self.checkout_branch(branch_name)
+                modified_files = self.make_changes()
+                commit_hash = self.commit_changes(commit_message)
+                
+                if commit_hash != "no-changes":
+                    self.push_changes(branch=branch_name)
+                    logger.info(f"Successfully pushed to branch: {branch_name}")
+                else:
+                    logger.warning("No changes were committed, skipping push")
+                
+                logger.info("Simple workflow completed successfully")
+                
+                result = {
+                    "success": True,
+                    "repo_path": str(repo_path),
+                    "branch": branch_name,
+                    "modified_files": modified_files,
+                    "commit_hash": commit_hash[:8] if commit_hash != "no-changes" else commit_hash,
+                    "message": "Simple workflow completed successfully"
+                }
+                
+                return result
             
         except Exception as e:
             logger.error(f"Workflow failed: {e}")

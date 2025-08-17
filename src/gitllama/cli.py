@@ -61,6 +61,7 @@ Examples:
         help="Disable AI and use simple automation"
     )
     
+    
     parser.add_argument(
         "--verbose", "-v",
         action="store_true",
@@ -98,8 +99,10 @@ def main() -> int:
                 print("   To use AI features, ensure Ollama is running: ollama serve")
                 ai_coordinator = None
         
-        # Run the workflow
+        # Run the workflow (always uses enhanced AI decision-making)
         with GitAutomator(ai_coordinator=ai_coordinator) as automator:
+            if ai_coordinator:
+                print("🚀 Running AI workflow with intelligent decision-making...")
             results = automator.run_full_workflow(
                 git_url=args.git_url,
                 branch_name=args.branch,
@@ -114,12 +117,22 @@ def main() -> int:
             print(f"  Modified files: {', '.join(results['modified_files'])}")
             print(f"  Commit: {results['commit_hash']}")
             
+            # AI analysis and decision summary
+            if 'total_ai_decisions' in results:
+                print(f"  AI Decisions Made: {results['total_ai_decisions']}")
+            
             if 'ai_analysis' in results:
                 print(f"\n🤖 AI Analysis:")
                 analysis = results['ai_analysis']
                 print(f"  Project Type: {analysis.get('project_type', 'Unknown')}")
                 print(f"  Technologies: {', '.join(analysis.get('technologies', []))}")
                 print(f"  State: {analysis.get('state', 'Unknown')}")
+                
+                # Show synthesis if available
+                if analysis.get('synthesis'):
+                    synthesis = analysis['synthesis']
+                    print(f"  Next Priority: {synthesis.get('next_priority', 'Unknown')}")
+                    print(f"  Recommended Tasks: {', '.join(synthesis.get('immediate_tasks', [])[:3])}")
             
             return 0
         else:

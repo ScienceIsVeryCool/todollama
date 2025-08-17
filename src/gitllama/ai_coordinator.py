@@ -10,6 +10,8 @@ from typing import Dict, List, Optional
 from .ollama_client import OllamaClient
 from .project_analyzer import ProjectAnalyzer
 from .branch_analyzer import BranchAnalyzer
+from .ai_decision_formatter import AIDecisionFormatter
+from .file_modifier import FileModifier
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +24,11 @@ class AICoordinator:
         self.client = OllamaClient(base_url)
         self.context_window = []
         
-        # Initialize the analyzers
+        # Initialize the analyzers and decision formatter
         self.project_analyzer = ProjectAnalyzer(self.client, model)
         self.branch_analyzer = BranchAnalyzer(self.client, model)
+        self.decision_formatter = AIDecisionFormatter()
+        self.file_modifier = FileModifier(self.client, model)
         
         logger.info(f"Initialized AI Coordinator with model: {model}")
     
@@ -124,9 +128,43 @@ class AICoordinator:
         
         return selected_branch
     
+    def run_file_modification_workflow(self, repo_path: Path, project_info: Dict) -> Dict:
+        """Run the complete file modification workflow using the new FileModifier."""
+        logger.info("Running file modification workflow with AI decisions")
+        
+        # Use the FileModifier to handle the complete workflow
+        result = self.file_modifier.run_full_modification_workflow(repo_path, project_info)
+        
+        # Store in context
+        self.context_window.append({
+            "type": "file_modification_workflow",
+            "result": result
+        })
+        
+        return result
+    
     def decide_file_operations(self, repo_path: Path, project_info: Dict) -> List[Dict[str, str]]:
-        """AI decides what file operations to perform based on deep project understanding and synthesis."""
-        logger.info("AI deciding on file operations")
+        """AI decides what file operations to perform using enhanced decision system."""
+        logger.info("AI deciding on file operations with enhanced decision formatter")
+        
+        # Use the file modifier to select files with single-word decisions
+        file_operations = self.file_modifier.select_files_to_modify(repo_path, project_info)
+        
+        # Convert to old format for compatibility
+        converted_operations = []
+        for op in file_operations:
+            converted_operations.append({
+                "operation": op["operation"],
+                "file_path": op["file_path"],
+                "content": op.get("content", ""),
+                "reason": op.get("reason", "AI selected")
+            })
+        
+        return converted_operations
+    
+    def decide_file_operations_legacy(self, repo_path: Path, project_info: Dict) -> List[Dict[str, str]]:
+        """Legacy AI file operations method (kept for reference)."""
+        logger.info("AI deciding on file operations (legacy method)")
         
         # Extract detailed information from the analysis
         project_type = project_info.get("project_type", "unknown")

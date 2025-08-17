@@ -3,12 +3,12 @@ Branch Analyzer for GitLlama
 Intelligent branch selection and analysis with clear decision logic
 """
 
-import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 from .ollama_client import OllamaClient
+from .ai_decision_formatter import AIDecisionFormatter
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ class BranchAnalyzer:
         self.client = client
         self.model = model
         self.branch_analyses = {}  # Store analysis of each branch
+        self.decision_formatter = AIDecisionFormatter()
         
         logger.info(f"BranchAnalyzer initialized with model: {model}")
     
@@ -282,82 +283,71 @@ class BranchAnalyzer:
         reuse_threshold = 30  # Minimum score to consider reuse
         has_good_candidates = any(c['score'] >= reuse_threshold for c in reuse_candidates)
         
+        # Use single-word decision system
         if has_good_candidates:
-            # AI decides which existing branch to use
-            logger.info(f"🤖 AI: Deciding branch selection strategy with {len(reuse_candidates)} candidates")
-            prompt = f"""{context}
-
-You are deciding which branch to use for making improvements to this repository.
-You STRONGLY PREFER to reuse existing branches (80% of the time) rather than creating new ones.
-
-Given the reuse candidates above, decide:
-1. Should we reuse an existing branch? (strongly prefer YES if score >= {reuse_threshold})
-2. If yes, which branch should we use?
-3. If no, what type of new branch do we need?
-
-Respond in JSON format:
-{{
-    "decision": "REUSE|CREATE",
-    "selected_branch": "branch-name-if-reuse",
-    "new_branch_type": "feature|fix|docs|chore (if CREATE)",
-    "reasoning": "brief explanation"
-}}"""
-        else:
-            # No good candidates, likely need to create new
-            logger.info(f"🤖 AI: Determining new branch type (no suitable candidates found)")
-            prompt = f"""{context}
-
-No suitable existing branches found for reuse (all scores < {reuse_threshold}).
-We need to create a new branch.
-
-What type of branch should we create for improving this {project_info.get('project_type', 'project')}?
-
-Respond in JSON format:
-{{
-    "decision": "CREATE",
-    "selected_branch": null,
-    "new_branch_type": "feature|fix|docs|chore",
-    "reasoning": "brief explanation"
-}}"""
-        
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
-        
-        for chunk in self.client.chat_stream(self.model, messages):
-            response += chunk
-        
-        try:
-            decision = json.loads(response)
+            # First decision: Should we REUSE or CREATE?
+            action_decision, _ = self.decision_formatter.make_ai_decision(
+                client=self.client,
+                model=self.model,
+                context=context,
+                question="Should we reuse an existing branch or create a new one?",
+                options=["REUSE", "CREATE"],
+                additional_context=f"Strong preference for REUSE when candidates have score >= {reuse_threshold}"
+            )
             
-            # Validate and apply reuse bias
-            if has_good_candidates and decision.get('decision') == 'CREATE':
-                # Override 20% of CREATE decisions when good candidates exist
-                import random
-                if random.random() < 0.2:  # Only 20% chance to actually create new
-                    logger.info("    Applying reuse bias: overriding CREATE decision")
-                    decision = {
-                        'decision': 'REUSE',
-                        'selected_branch': reuse_candidates[0]['branch_name'],
-                        'reasoning': f"Reusing existing branch with high score ({reuse_candidates[0]['score']})"
-                    }
-            
-            logger.info(f"    Decision: {decision['decision']} - {decision.get('reasoning', 'No reason provided')}")
-            return decision
-            
-        except json.JSONDecodeError:
-            # Fallback decision
-            if reuse_candidates and reuse_candidates[0]['score'] >= reuse_threshold:
-                return {
+            if action_decision == "REUSE" and reuse_candidates:
+                # Second decision: Which branch to reuse?
+                branch_options = [c['branch_name'] for c in reuse_candidates[:5]]  # Top 5 candidates
+                
+                selected_branch, _ = self.decision_formatter.make_ai_decision(
+                    client=self.client,
+                    model=self.model,
+                    context=f"Available branches: {', '.join(branch_options)}",
+                    question="Which existing branch should we reuse?",
+                    options=branch_options,
+                    additional_context="Choose the most suitable branch for development"
+                )
+                
+                decision = {
                     'decision': 'REUSE',
-                    'selected_branch': reuse_candidates[0]['branch_name'],
-                    'reasoning': 'Using highest scoring existing branch'
+                    'selected_branch': selected_branch,
+                    'reasoning': f"AI selected existing branch: {selected_branch}"
                 }
             else:
-                return {
+                # Create new branch - decide type
+                branch_type, _ = self.decision_formatter.make_ai_decision(
+                    client=self.client,
+                    model=self.model,
+                    context=context,
+                    question="What type of new branch should we create?",
+                    options=["feature", "fix", "docs", "chore"],
+                    additional_context="Choose based on the project's current needs"
+                )
+                
+                decision = {
                     'decision': 'CREATE',
-                    'new_branch_type': 'feature',
-                    'reasoning': 'Creating new feature branch'
+                    'new_branch_type': branch_type,
+                    'reasoning': f"AI chose to create new {branch_type} branch"
                 }
+        else:
+            # No good candidates - create new branch
+            branch_type, _ = self.decision_formatter.make_ai_decision(
+                client=self.client,
+                model=self.model,
+                context=context,
+                question="What type of new branch should we create?",
+                options=["feature", "fix", "docs", "chore"],
+                additional_context=f"No suitable existing branches found. Creating for {project_info.get('project_type', 'project')} project."
+            )
+            
+            decision = {
+                'decision': 'CREATE',
+                'new_branch_type': branch_type,
+                'reasoning': f"No suitable candidates found, creating new {branch_type} branch"
+            }
+        
+        logger.info(f"    Final Decision: {decision['decision']} - {decision.get('reasoning', 'No reason provided')}")
+        return decision
     
     # ============================================================
     # STEP 4: GENERATE/SELECT BRANCH NAME
