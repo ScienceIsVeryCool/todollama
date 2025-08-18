@@ -145,12 +145,9 @@ Your single-word decision:"""
         # Hook into report generator
         if self.report_generator:
             self.report_generator.add_ai_decision(
-                context=response.strip(),  # Store raw response in context for tooltip
-                question=question,
-                options=options,
-                selected=selected_option,
-                confidence=confidence,
-                reasoning=f"Based on provided options with {confidence:.0%} confidence"
+                decision_type=question,
+                decision=selected_option,
+                context=f"Options: {options} | Confidence: {confidence:.0%} | Response: {response.strip()}"
             )
         
         # Log the result with special formatting

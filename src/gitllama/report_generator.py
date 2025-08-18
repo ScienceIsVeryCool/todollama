@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from .context_manager import context_manager
+from . import __version__
 
 try:
     from jinja2 import Template
@@ -165,22 +166,6 @@ class ReportGenerator:
         self.guided_questions.append(qa_data)
         logger.debug(f"Added guided Q&A: {question[:50]}...")
     
-    def add_ai_decision(self, context: str, question: str, options: List[str], 
-                       selected: str, confidence: float, reasoning: str = ""):
-        """Add an AI decision to the report."""
-        decision_data = {
-            "timestamp": datetime.now(),
-            "context": context[:200] + "..." if len(context) > 200 else context,
-            "question": question,
-            "options": options,
-            "selected": selected,
-            "confidence": confidence,
-            "reasoning": reasoning,
-            "type": "single_word_decision"
-        }
-        self.ai_decisions.append(decision_data)
-        self.metrics["ai_calls"] += 1
-        logger.debug(f"Added AI decision: {question[:50]}... -> {selected}")
     
     def add_branch_discovery(self, branches: List[str]):
         """Add discovered branches to the report."""
@@ -374,6 +359,29 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
         self.file_operations.append(operation_data)
         logger.debug(f"Added file operation: {operation} {file_path}")
     
+    def add_ai_decision(self, decision_type: str, decision: str, context: str = ""):
+        """Add an AI decision to the report."""
+        decision_data = {
+            "timestamp": datetime.now(),
+            "type": decision_type,
+            "decision": decision,
+            "context": context
+        }
+        
+        # Store in AI decisions list (create if doesn't exist)
+        if not hasattr(self, 'ai_decisions'):
+            self.ai_decisions = []
+        
+        self.ai_decisions.append(decision_data)
+        logger.debug(f"Added AI decision: {decision_type} -> {decision}")
+    
+    def set_iteration_history(self, iteration_history: List[Dict], total_iterations: int, files_attempted: int):
+        """Set the iteration history for the iterative workflow."""
+        self.iteration_history = iteration_history
+        self.total_iterations = total_iterations
+        self.files_attempted = files_attempted
+        logger.debug(f"Set iteration history: {total_iterations} iterations, {files_attempted} files attempted")
+    
     def set_ai_client(self, client):
         """Set the AI client for log analysis."""
         self._ai_client = client
@@ -472,10 +480,14 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
             "executive_summary": self.executive_summary,
             "repository_analysis": self.repository_analysis,
             "guided_questions": self.guided_questions,
-            "ai_decisions": self.ai_decisions,
+            "ai_decisions": getattr(self, 'ai_decisions', []),
             "branch_analysis": self.branch_analysis,
             "file_operations": self.file_operations,
-            "metrics": self.metrics
+            "metrics": self.metrics,
+            "iteration_history": getattr(self, 'iteration_history', []),
+            "total_iterations": getattr(self, 'total_iterations', 0),
+            "files_attempted": getattr(self, 'files_attempted', 0),
+            "gitllama_version": __version__
         }
         
         # Generate HTML
@@ -729,6 +741,75 @@ grep -o 'Original Filename: [^"]*' latest.html
             padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;
             margin-left: 0.5rem; cursor: help;
         }
+        
+        /* Iterative Workflow Styles */
+        .workflow-stats {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem; margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background: white; padding: 1rem; border-radius: 8px; text-align: center;
+            border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .stat-value { font-size: 1.5rem; font-weight: bold; color: #1f2937; }
+        .stat-label { font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem; }
+        
+        .iteration-timeline { display: flex; flex-direction: column; gap: 0.75rem; }
+        .iteration-item {
+            background: white; border-radius: 8px; padding: 1rem;
+            border-left: 4px solid #d1d5db; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .iteration-item.success { border-left-color: #10b981; }
+        .iteration-item.retry { border-left-color: #f59e0b; }
+        
+        .iteration-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .iteration-badge { display: flex; gap: 0.5rem; }
+        .file-badge {
+            background: #dbeafe; color: #1e40af; padding: 0.25rem 0.5rem;
+            border-radius: 4px; font-size: 0.75rem; font-weight: 600;
+        }
+        .attempt-badge {
+            background: #f3f4f6; color: #374151; padding: 0.25rem 0.5rem;
+            border-radius: 4px; font-size: 0.75rem; font-weight: 600;
+        }
+        .status-success { color: #065f46; font-weight: 600; }
+        .status-retry { color: #92400e; font-weight: 600; }
+        
+        .iteration-details { font-size: 0.875rem; }
+        .validation-reason { color: #6b7280; margin-top: 0.25rem; font-style: italic; }
+        
+        /* AI Decision Timeline Styles */
+        .ai-decisions-summary { margin-bottom: 2rem; }
+        .decision-timeline { 
+            background: #f8fafc; border-radius: 8px; padding: 1rem;
+            border-left: 4px solid #667eea; margin-top: 1rem;
+        }
+        .decision-item {
+            display: flex; gap: 1rem; padding: 0.75rem 0; 
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .decision-item:last-child { border-bottom: none; }
+        .decision-time {
+            font-family: 'Monaco', monospace; font-size: 0.8rem; 
+            color: #6b7280; min-width: 60px; text-align: right;
+        }
+        .decision-content { flex: 1; }
+        .decision-type { 
+            font-weight: 600; color: #374151; font-size: 0.875rem; 
+            margin-bottom: 0.25rem;
+        }
+        .decision-result { 
+            font-size: 0.875rem; color: #1f2937; margin-bottom: 0.25rem;
+            padding: 0.25rem 0.5rem; background: white; border-radius: 4px;
+            border: 1px solid #e5e7eb; display: inline-block;
+        }
+        .decision-context { 
+            font-size: 0.8rem; color: #6b7280; font-style: italic; 
+            margin-top: 0.25rem;
+        }
         .file-op.has-warning { border-left: 4px solid #f59e0b; }
         .file-op.has-warning .file-op-header { background: #fffbeb; }
         .collapsible { cursor: pointer; user-select: none; }
@@ -823,6 +904,11 @@ grep -o 'Original Filename: [^"]*' latest.html
             <h1>🦙 GitLlama Report</h1>
             <p>AI-Powered Repository Analysis • {{ generation_time }}</p>
             <p>Repository: {{ executive_summary.repo_url }}</p>
+            <div style="margin-top: 0.5rem; opacity: 0.8; font-size: 0.9rem;">
+                <span style="background: rgba(255,255,255,0.2); padding: 0.25rem 0.5rem; border-radius: 4px;">
+                    Version {{ gitllama_version }}
+                </span>
+            </div>
         </div>
 
         <!-- Executive Summary -->
@@ -969,23 +1055,20 @@ grep -o 'Original Filename: [^"]*' latest.html
                     {% for decision in ai_decisions %}
                     <tr>
                         <td>{{ decision.timestamp.strftime('%H:%M:%S') }}</td>
-                        <td>Single-Word</td>
-                        <td>{{ decision.question }}</td>
+                        <td>{{ decision.type }}</td>
+                        <td>{{ decision.type }}</td>
                         <td>
                             <div class="decision-hover">
-                                <strong>{{ decision.selected }}</strong> (from: {{ decision.options|join(', ') }})
+                                <strong>{{ decision.decision }}</strong>
                                 <div class="decision-tooltip">
-                                    {% if decision.reasoning %}
-                                    <strong>Reasoning:</strong> {{ decision.reasoning }}<br>
+                                    {% if decision.context %}
+                                    <strong>Context:</strong> {{ decision.context[:200] }}{% if decision.context|length > 200 %}...{% endif %}
                                     {% endif %}
-                                    <strong>Raw Response:</strong> "{{ decision.context[:100] }}{% if decision.context|length > 100 %}...{% endif %}"
                                 </div>
                             </div>
                         </td>
                         <td>
-                            <span class="confidence confidence-{% if decision.confidence > 0.8 %}high{% elif decision.confidence > 0.6 %}medium{% else %}low{% endif %}">
-                                {{ "%.0f"|format(decision.confidence * 100) }}%
-                            </span>
+                            <span class="confidence confidence-medium">-</span>
                         </td>
                     </tr>
                     {% endfor %}
@@ -1118,6 +1201,63 @@ grep -o 'Original Filename: [^"]*' latest.html
             </div>
         </div>
 
+        <!-- Iterative Workflow Report -->
+        {% if iteration_history %}
+        <div class="section">
+            <h2 class="section-header" onclick="toggleSection(this)">
+                🔄 Iterative Workflow Report
+                <span class="collapse-indicator">▼</span>
+            </h2>
+            <div class="section-content">
+                <div class="workflow-summary">
+                    <div class="workflow-stats">
+                        <div class="stat-card">
+                            <div class="stat-value">{{ total_iterations or 0 }}</div>
+                            <div class="stat-label">Total Iterations</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">{{ files_attempted or 0 }}</div>
+                            <div class="stat-label">Files Attempted</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">{{ (iteration_history | selectattr('validation_success') | list | length) }}</div>
+                            <div class="stat-label">Successful Validations</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">{{ ((iteration_history | length) - (iteration_history | selectattr('validation_success') | list | length)) }}</div>
+                            <div class="stat-label">Retries Needed</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h3>🔍 Iteration Details</h3>
+                <div class="iteration-timeline">
+                    {% for iteration in iteration_history %}
+                    <div class="iteration-item {% if iteration.validation_success %}success{% else %}retry{% endif %}">
+                        <div class="iteration-header">
+                            <div class="iteration-badge">
+                                <span class="file-badge">File {{ iteration.file_num }}</span>
+                                <span class="attempt-badge">Attempt {{ iteration.retry_num }}</span>
+                            </div>
+                            <div class="iteration-status">
+                                {% if iteration.validation_success %}
+                                    <span class="status-success">✅ VALIDATED</span>
+                                {% else %}
+                                    <span class="status-retry">🔄 RETRY NEEDED</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="iteration-details">
+                            <div><strong>{{ iteration.operation }}:</strong> {{ iteration.file_path }}</div>
+                            <div class="validation-reason">{{ iteration.validation_reason }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- File Operations Report -->
         <div class="section">
             <h2 class="section-header" onclick="toggleSection(this)">
@@ -1125,7 +1265,28 @@ grep -o 'Original Filename: [^"]*' latest.html
                 <span class="collapse-indicator">▼</span>
             </h2>
             <div class="section-content">
+            {% if ai_decisions %}
+            <div class="ai-decisions-summary">
+                <h3>🤖 AI Decision Timeline</h3>
+                <div class="decision-timeline">
+                    {% for decision in ai_decisions %}
+                    <div class="decision-item">
+                        <div class="decision-time">{{ decision.timestamp.strftime('%H:%M:%S') }}</div>
+                        <div class="decision-content">
+                            <div class="decision-type">{{ decision.type }}</div>
+                            <div class="decision-result">{{ decision.decision }}</div>
+                            {% if decision.context %}
+                            <div class="decision-context">{{ decision.context }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
             {% if file_operations %}
+            <h3>📁 File Operations</h3>
             {% for op in file_operations %}
             <div class="file-op{% if '⚠️' in op.reason %} has-warning{% endif %}">
                 <div class="file-op-header">
@@ -1426,7 +1587,7 @@ grep -o 'Original Filename: [^"]*' latest.html
 | {{ qa.timestamp.strftime('%H:%M:%S') }} | Guided Q&A | {{ qa.question }} | {{ qa.answer[:50] }}{% if qa.answer|length > 50 %}...{% endif %} | {% if qa.confidence %}{{ "%.0f"|format(qa.confidence * 100) }}%{% else %}-{% endif %} |
 {% endfor %}
 {% for decision in ai_decisions %}
-| {{ decision.timestamp.strftime('%H:%M:%S') }} | Single-Word | {{ decision.question }} | **{{ decision.selected }}** | {{ "%.0f"|format(decision.confidence * 100) }}% |
+| {{ decision.timestamp.strftime('%H:%M:%S') }} | {{ decision.type }} | {{ decision.type }} | **{{ decision.decision }}** | - |
 {% endfor %}
 {% else %}
 No AI decisions recorded.

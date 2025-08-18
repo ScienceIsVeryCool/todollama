@@ -164,11 +164,9 @@ class GitAutomator:
             project_info = self.ai_coordinator.explore_repository(self.repo_path)
             logger.info(f"AI understanding: {project_info}")
             
-            # Step 2: Decide on file operations
-            operations = self.ai_coordinator.decide_file_operations(self.repo_path, project_info)
-            
-            # Step 3: Execute the operations
-            modified_files = self.ai_coordinator.execute_file_operations(self.repo_path, operations)
+            # Step 2: Run iterative file modification workflow
+            workflow_result = self.ai_coordinator.modify_files(self.repo_path, project_info)
+            modified_files = workflow_result.get('modified_files', [])
             
             return modified_files
         else:

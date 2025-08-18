@@ -1,17 +1,21 @@
 # GitLlama 🦙🤖
 
-AI-powered git automation tool with deep project understanding. GitLlama v0.5.0 uses hierarchical AI analysis and intelligent single-word decision-making to clone, analyze, optimize, commit, and push your code.
+An AI-powered Software Factory that understands your codebase and iteratively builds features. GitLlama v0.6.0 combines deep project analysis with intelligent automation to clone, analyze, create, validate, and deliver production-ready code changes.
 
-## 🌟 Key Features
+## 🌟 Software Factory Features
 
+- **🏭 Production Pipeline**: Complete end-to-end software delivery from analysis to deployment
 - **🧠 Deep Project Analysis**: Hierarchical summarization system that understands entire codebases
-- **🎯 Single-Word Decision System**: AI makes deterministic decisions with fuzzy matching for reliability
-- **🌿 Intelligent Branch Selection**: AI analyzes existing branches and decides whether to reuse or create new ones
-- **📝 TODO.md Integration**: Detects and follows project owner guidance from TODO.md files
-- **📊 Smart File Operations**: AI selects up to 5 files to create, modify, or delete intelligently
-- **🔄 Guided Questions**: AI asks strategic questions throughout analysis for better understanding
-- **📈 Synthesis & Recommendations**: Provides actionable next steps and development priorities
-- **📝 Detailed Decision Tracking**: See every AI decision with confidence scores and reasoning
+- **🎯 Deterministic AI Decisions**: Single-word decision system with fuzzy matching for reliability
+- **🌿 Intelligent Branch Strategy**: Analyzes existing branches and decides optimal development approach
+- **📝 Requirements Integration**: Detects and follows project owner guidance from TODO.md files
+- **🔄 Iterative Development**: AI selects and validates files one by one with retry logic and quality gates
+- **🎨 Clean Code Generation**: Extracts production-ready code from AI responses, removes thinking noise
+- **⚠️ Quality Assurance**: Double-checking validation system with comprehensive error prevention
+- **📊 Process Analytics**: Complete tracking of decisions, iterations, and delivery metrics
+- **🔄 Interactive Workflow**: AI asks strategic questions for optimal feature understanding
+- **📈 Continuous Improvement**: Provides actionable recommendations and development priorities
+- **📝 Full Audit Trail**: Complete visibility into every AI decision with context and reasoning
 
 ## 🚀 Installation
 
@@ -71,14 +75,54 @@ GitLlama uses a sophisticated multi-step process to understand and improve repos
    - **Step 4: Hierarchical Merging** - Combines summaries using merge-sort approach
    - **Step 5: Result Formatting** - Creates structured insights about the project
 
-### 2. **Intelligent Workflow** 🤖
-   1. **Clones the repository**
-   2. **AI explores the project** - Deep multi-level analysis across all branches
-   3. **AI analyzes existing branches** - Evaluates reuse potential and compatibility
-   4. **AI decides on branch strategy** - Smart selection between reusing existing or creating new
-   5. **AI makes intelligent changes** - Based on comprehensive project understanding
-   6. **AI generates commit message** - Follows conventional commit format
-   7. **Pushes to remote**
+### 2. **Software Factory Pipeline** 🏭
+   1. **Repository Acquisition** - Clones and prepares the development environment
+   2. **Deep Analysis Phase** - AI explores project structure, patterns, and requirements
+   3. **Branch Strategy Planning** - Evaluates existing branches and determines optimal approach
+   4. **Development Planning** - AI decides on feature implementation strategy
+   5. **Iterative Development** - One-by-one file creation with validation and quality gates
+   6. **Quality Assurance** - Automated validation, testing, and error prevention
+   7. **Delivery Preparation** - Generates commit messages and prepares for deployment
+   8. **Production Deployment** - Pushes verified changes to remote repository
+
+### 3. **Iterative Development Process** 🔄
+
+GitLlama employs a sophisticated iterative development methodology:
+
+```
+Starting iterative file modification workflow
+============================================================
+ITERATION 1: File Selection & Modification
+  🤖 AI: Selecting most impactful file for modification
+    Selected: src/config.py (CREATE)
+    Reason: Add missing configuration management
+  📝 AI: Generating optimized content
+    ✅ Parsed: 45 lines of clean Python code
+    🧹 Trimmed: Removed thinking blocks and extra commentary
+  ✅ Validation: File created successfully
+  🔍 AI: Double-checking for potential issues
+    Status: APPROVED - No warnings detected
+
+ITERATION 2: File Selection & Modification  
+  🤖 AI: Selecting next file for enhancement
+    Selected: tests/test_config.py (CREATE)
+    Reason: Add comprehensive test coverage
+  📝 AI: Generating test suite
+    ✅ Parsed: 67 lines of clean test code
+  ✅ Validation: Tests created and passing
+  
+AI Decision: Continue with more files? NO (satisfied with changes)
+============================================================
+Total iterations: 2 | Files modified: 2 | Success rate: 100%
+```
+
+#### Development Methodology:
+- **🎯 Focused Iteration**: AI selects the most impactful file for each development cycle
+- **🔍 Quality Gates**: Each change is validated against project standards before proceeding
+- **⚠️ Error Prevention**: Multi-layer validation system eliminates common development issues
+- **🎨 Production-Ready Output**: Extracts clean, deployable code from AI responses
+- **🔄 Resilient Development**: Up to 3 attempts per file with adaptive goal refinement
+- **📊 Process Intelligence**: Comprehensive tracking of development progress and quality metrics
 
 ### Example Analysis Output:
 ```
@@ -107,7 +151,7 @@ STEP 5: FORMAT RESULTS
 Repository analysis complete!
 ```
 
-### 3. **Intelligent Branch Selection** 🌿
+### 4. **Intelligent Branch Selection** 🌿
 
 GitLlama now features sophisticated branch analysis and selection:
 
@@ -141,14 +185,33 @@ Branch selection complete: wip-database
 - **🏗️ Branch Classification**: Identifies feature, fix, docs, and WIP branches
 - **⚙️ Intelligent Fallback**: Creates new branches with meaningful names when needed
 
+### 5. **Production Analytics & Reporting** 📊
+
+GitLlama provides enterprise-grade reporting and process analytics:
+
+#### Analytics Capabilities:
+- **🏷️ Version Control**: Complete traceability of software factory versions and configurations
+- **⏱️ Process Timeline**: Comprehensive audit trail of all development decisions and actions
+- **🔄 Development Cycles**: Detailed analysis of iteration efficiency and success patterns
+- **📈 Performance Metrics**: Resource utilization, API efficiency, and processing statistics
+- **🎨 Visual Dashboards**: Interactive HTML reports with syntax highlighting and drill-down capabilities
+- **🧹 Quality Metrics**: Code cleanliness tracking and output refinement statistics
+
+#### Production Reports:
+- **Development Decision Log**: Complete record of AI choices with business context
+- **Change Management**: Comprehensive tracking of all file operations and modifications
+- **Quality Assurance**: Success rates, retry analysis, and validation effectiveness
+- **Strategy Analysis**: Branch selection rationale and development approach optimization
+- **Technical Intelligence**: Deep project insights, architecture recommendations, and improvement opportunities
+
 ## 🐍 Python API
 
 ```python
 from gitllama import GitAutomator, AICoordinator
 
-# With AI - Full intelligent automation
-ai = AICoordinator(model="gemma3:4b")
-with GitAutomator(ai_coordinator=ai) as automator:
+# Software Factory - Full intelligent automation
+factory = AICoordinator(model="gemma3:4b")
+with GitAutomator(ai_coordinator=factory) as automator:
     results = automator.run_full_workflow(
         git_url="https://github.com/user/repo.git"
     )
@@ -180,19 +243,27 @@ GitLlama is built with a modular architecture for easy extension:
 
 ```
 gitllama/
-├── cli.py              # Command-line interface
-├── git_operations.py   # Git automation logic
-├── ai_coordinator.py   # AI workflow coordination
-├── project_analyzer.py # Hierarchical project analysis
-├── branch_analyzer.py  # Intelligent branch selection (NEW!)
-├── config.py           # Configuration and logging setup
-└── ollama_client.py    # Ollama API integration
+├── cli.py                 # Command-line interface
+├── git_operations.py      # Git automation logic
+├── ai_coordinator.py      # AI workflow coordination
+├── project_analyzer.py    # Hierarchical project analysis
+├── branch_analyzer.py     # Intelligent branch selection
+├── file_modifier.py       # Iterative development process
+├── ai_output_parser.py    # Production-ready code extraction
+├── report_generator.py    # Enterprise analytics and reporting
+├── context_manager.py     # Performance and resource tracking
+├── config.py              # Configuration and logging setup
+└── ollama_client.py       # Ollama API integration
 ```
 
 ### Key Components:
 
 - **ProjectAnalyzer**: Handles the 5-step hierarchical analysis process
-- **BranchAnalyzer**: Intelligent branch selection with 4-step decision pipeline (NEW!)
+- **BranchAnalyzer**: Intelligent branch selection with 4-step decision pipeline
+- **FileModifier**: Iterative development process with quality gates and resilient retry logic
+- **AIOutputParser**: Production-ready code extraction from AI responses with noise elimination
+- **ReportGenerator**: Enterprise analytics platform with comprehensive decision tracking and metrics
+- **ContextManager**: Performance monitoring and resource optimization for AI operations
 - **AICoordinator**: Orchestrates AI decisions throughout the workflow
 - **GitAutomator**: Manages git operations with optional AI integration
 - **OllamaClient**: Interfaces with local Ollama models
@@ -341,18 +412,26 @@ Contributions are welcome! The modular architecture makes it easy to add:
 - More file type handlers
 - Enhanced decision strategies
 
-## 🚀 Future Enhancements
+## 🚀 Core Production Capabilities
 
-- [ ] Git history analysis
-- [ ] Dependency vulnerability scanning
-- [ ] Parallel chunk processing
-- [ ] Code quality metrics
-- [ ] Security analysis
-- [ ] Test coverage assessment
-- [ ] README generation
-- [ ] Automatic PR descriptions
-- [ ] Multi-language documentation
+- [x] **Iterative Development Process**: Systematic file-by-file development with quality validation
+- [x] **Production Code Generation**: Clean, deployable code extraction with noise elimination
+- [x] **Quality Assurance Pipeline**: Multi-layer validation system with error prevention
+- [x] **Enterprise Analytics**: Complete process tracking, decision auditing, and performance monitoring
+- [x] **Resource Optimization**: Intelligent context window management and API efficiency
+
+## 🚀 Future Factory Enhancements
+
+- [ ] **Historical Analysis**: Git commit pattern analysis and developer workflow optimization
+- [ ] **Security Pipeline**: Dependency vulnerability scanning and security-first development
+- [ ] **Parallel Processing**: Multi-threaded chunk analysis for enterprise-scale repositories
+- [ ] **Quality Metrics**: Comprehensive code quality scoring and improvement recommendations
+- [ ] **Security Integration**: Built-in security analysis and compliance validation
+- [ ] **Test Automation**: Intelligent test coverage assessment and generation
+- [ ] **Pull Request Automation**: AI-generated PR descriptions and review facilitation
+- [ ] **Documentation Factory**: Multi-language documentation generation and maintenance
+- [ ] **Team Collaboration**: Real-time collaborative development and workflow coordination
 
 ---
 
-**Note**: GitLlama requires git credentials configured for pushing to repositories. Ensure you have proper access rights to the repositories you're modifying.
+**Enterprise Note**: GitLlama Software Factory requires git credentials configured for repository deployment. Ensure proper access rights and compliance with your organization's development policies before production use.

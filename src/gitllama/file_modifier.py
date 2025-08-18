@@ -617,8 +617,386 @@ Generate a complete, well-organized TODO.md file that builds on the progress mad
         logger.info(f"📝 File {file_path}: {parse_result.original_length} → {parse_result.final_length} chars "
                    f"({ai_output_parser.get_trimming_emoji_indicator(parse_result)} trimmed: {parse_result.was_trimmed})")
     
+    def _should_continue_modifying(self, repo_path: Path, project_info: Dict, modified_files: List[str]) -> bool:
+        """Ask AI if we should continue modifying files."""
+        logger.info("🤔 Asking AI if more modifications are needed")
+        
+        context = self._build_file_selection_context(project_info, list(repo_path.rglob("*")))
+        modified_summary = "\n".join([f"- {f}" for f in modified_files]) if modified_files else "None yet"
+        
+        prompt = f"""Based on the project analysis and files already modified, should we continue making modifications?
+
+PROJECT CONTEXT:
+{context}
+
+FILES ALREADY MODIFIED:
+{modified_summary}
+
+Consider:
+1. Have we addressed the main priorities?
+2. Are there critical files that still need work?
+3. Would additional changes add significant value?
+
+Answer with YES to continue modifying files, or NO if modifications are complete.
+Respond with ONLY 'YES' or 'NO'."""
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = ""
+        for chunk in self.client.chat_stream(self.model, messages, context_name="continue_decision"):
+            response += chunk
+        
+        decision = "YES" in response.upper()
+        
+        if self.report_generator:
+            self.report_generator.add_ai_decision(
+                "Continue Modifying Files",
+                "YES" if decision else "NO",
+                f"Modified {len(modified_files)} files so far"
+            )
+        
+        return decision
+    
+    def _select_single_file_to_modify(self, repo_path: Path, project_info: Dict, already_modified: List[str]) -> Optional[Dict[str, Any]]:
+        """AI selects a single file to work on."""
+        logger.info("📋 AI selecting file to modify")
+        
+        context = self._build_file_selection_context(project_info, list(repo_path.rglob("*")))
+        modified_summary = "\n".join([f"- {f}" for f in already_modified]) if already_modified else "None"
+        
+        prompt = f"""Select ONE file to create or modify that will have the most impact on the project.
+
+PROJECT CONTEXT:
+{context}
+
+FILES ALREADY MODIFIED (don't select these again):
+{modified_summary}
+
+Choose an operation:
+- CREATE a new file (documentation, config, utility, test)
+- MODIFY an existing file (improve code, fix issues, add features)
+
+Respond in JSON format:
+{{
+    "operation": "CREATE" or "MODIFY",
+    "file_path": "path/to/file.ext",
+    "goal": "Clear description of what this file should accomplish",
+    "reason": "Why this file is important for the project"
+}}"""
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = ""
+        for chunk in self.client.chat_stream(self.model, messages, context_name="file_selection"):
+            response += chunk
+        
+        try:
+            file_decision = json.loads(response)
+            logger.info(f"AI selected: {file_decision['operation']} {file_decision['file_path']}")
+            
+            if self.report_generator:
+                self.report_generator.add_ai_decision(
+                    f"Select File #{len(already_modified) + 1}",
+                    f"{file_decision['operation']} {file_decision['file_path']}",
+                    file_decision.get('reason', '')
+                )
+            
+            return file_decision
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse file selection: {response}")
+            return None
+    
+    def _generate_file_content_with_goal_reminder(self, repo_path: Path, project_info: Dict, 
+                                                 target_file: Dict, retry_num: int) -> str:
+        """Generate file content with goal reminder for retries."""
+        file_path = target_file['file_path']
+        operation = target_file['operation']
+        goal = target_file.get('goal', 'Improve the project')
+        
+        # Build context
+        context_parts = []
+        if 'project_type' in project_info:
+            context_parts.append(f"Project Type: {project_info['project_type']}")
+        if 'main_language' in project_info:
+            context_parts.append(f"Main Language: {project_info['main_language']}")
+        if 'synthesis' in project_info:
+            synthesis = project_info['synthesis']
+            if 'next_priority' in synthesis:
+                context_parts.append(f"Next Priority: {synthesis['next_priority']}")
+        
+        context = "\n".join(context_parts)
+        
+        # Read existing content if MODIFY
+        existing_content = ""
+        if operation == "MODIFY":
+            try:
+                full_path = repo_path / file_path
+                if full_path.exists():
+                    with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        existing_content = f.read()[:2000]
+            except Exception as e:
+                logger.debug(f"Could not read existing file {file_path}: {e}")
+        
+        # Add retry context if this is a retry
+        retry_context = ""
+        if retry_num > 0:
+            retry_context = f"""
+⚠️ RETRY ATTEMPT {retry_num + 1}/3: The previous attempt did not meet requirements.
+
+REMINDER OF YOUR GOAL:
+{goal}
+
+Please ensure the file content:
+1. Directly addresses the stated goal
+2. Is complete and functional
+3. Follows project conventions
+4. Includes necessary imports/dependencies
+"""
+        
+        language = self._get_language_from_path(file_path)
+        existing_preview = f'Existing content preview:\n{existing_content}' if existing_content else ''
+        
+        prompt = f"""Generate content for this file operation:
+
+Context:
+{context}
+
+File: {file_path}
+Operation: {operation} (COMPLETE FILE OVERWRITE)
+Goal: {goal}
+{retry_context}
+
+{existing_preview}
+
+Generate complete file content that achieves the stated goal.
+
+IMPORTANT: Wrap the complete file content in a markdown code block:
+
+```{language}
+# Complete file content here
+```
+
+Generate the file now:"""
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = ""
+        for chunk in self.client.chat_stream(self.model, messages, context_name="file_content_generation"):
+            response += chunk
+        
+        # Parse with our AI output parser
+        parse_result = ai_output_parser.parse_for_file_content(response, file_path)
+        self._store_parsing_result(file_path, operation, parse_result)
+        
+        return parse_result.content
+    
+    def _write_single_file(self, repo_path: Path, target_file: Dict, content: str) -> bool:
+        """Write a single file to disk."""
+        try:
+            file_path = repo_path / target_file['file_path']
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            logger.info(f"✍️ Wrote {len(content)} chars to {target_file['file_path']}")
+            
+            # Add to report
+            if self.report_generator:
+                parsing_info = self.parsing_results.get(target_file['file_path'], {})
+                self.report_generator.add_file_operation(
+                    target_file['operation'],
+                    target_file['file_path'],
+                    target_file.get('reason', 'AI selected file'),
+                    content=content,
+                    trimmed=parsing_info.get('was_trimmed', False),
+                    trimming_details=parsing_info.get('detailed_info', '')
+                )
+            
+            return True
+        except Exception as e:
+            logger.error(f"Failed to write file {target_file['file_path']}: {e}")
+            return False
+    
+    def _validate_file_change(self, repo_path: Path, target_file: Dict, content: str, project_info: Dict) -> Dict[str, Any]:
+        """AI validates if the file change was successful with warning elimination."""
+        logger.info(f"🔍 Validating {target_file['file_path']}")
+        
+        file_path = repo_path / target_file['file_path']
+        goal = target_file.get('goal', 'Improve the project')
+        
+        # Read the actual file content
+        actual_content = ""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                actual_content = f.read()
+        except Exception as e:
+            logger.error(f"Could not read file for validation: {e}")
+            return {"success": False, "reason": f"Could not read file: {e}"}
+        
+        # Step 1: Initial validation
+        initial_validation = self._perform_initial_validation(target_file, actual_content, goal)
+        
+        # Step 2: If there are concerns, perform double-check with warning awareness
+        if not initial_validation['success'] or '⚠️' in initial_validation.get('reason', ''):
+            logger.info(f"🔄 Performing double-check validation for {target_file['file_path']}")
+            return self._perform_warning_aware_validation(target_file, actual_content, goal, initial_validation)
+        
+        # Log successful validation
+        if self.report_generator:
+            self.report_generator.add_ai_decision(
+                f"Validate {target_file['file_path']}",
+                "PASS",
+                initial_validation.get('reason', '')
+            )
+        
+        return initial_validation
+    
+    def _perform_initial_validation(self, target_file: Dict, actual_content: str, goal: str) -> Dict[str, Any]:
+        """Perform the initial validation check."""
+        prompt = f"""Validate if this file modification achieved its goal.
+
+FILE: {target_file['file_path']}
+OPERATION: {target_file['operation']}
+STATED GOAL: {goal}
+
+FILE CONTENT (first 2000 chars):
+{actual_content[:2000]}
+
+Questions to consider:
+1. Does the file content achieve the stated goal?
+2. Is the code/content complete and functional?
+3. Are there any obvious errors or missing pieces?
+4. Does it follow good practices for this type of file?
+
+Respond in JSON format:
+{{
+    "success": true or false,
+    "reason": "Brief explanation of your validation decision"
+}}"""
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = ""
+        for chunk in self.client.chat_stream(self.model, messages, context_name="initial_validation"):
+            response += chunk
+        
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse initial validation response: {response}")
+            return {"success": False, "reason": "Could not parse validation response"}
+    
+    def _perform_warning_aware_validation(self, target_file: Dict, actual_content: str, goal: str, 
+                                        initial_validation: Dict) -> Dict[str, Any]:
+        """Perform a second validation with awareness of potential warnings."""
+        initial_reason = initial_validation.get('reason', '')
+        
+        prompt = f"""SECOND VALIDATION: You are double-checking this file because the initial validation raised concerns.
+
+FILE: {target_file['file_path']}
+OPERATION: {target_file['operation']}
+STATED GOAL: {goal}
+
+INITIAL VALIDATION CONCERN: {initial_reason}
+
+FILE CONTENT (first 2000 chars):
+{actual_content[:2000]}
+
+Please carefully re-examine this file with the following in mind:
+1. Is the initial concern actually a real problem that prevents the file from working?
+2. Does the file achieve its stated goal despite the concern?
+3. Are there false positives or overly strict interpretations?
+4. Is this file good enough to proceed, or does it genuinely need fixes?
+
+Be more lenient if the file accomplishes its core purpose, even if it's not perfect.
+Only fail if there are genuine functional problems or the goal is clearly not met.
+
+Respond in JSON format:
+{{
+    "success": true or false,
+    "reason": "Your final decision after double-checking",
+    "warning_eliminated": true or false,
+    "double_check_notes": "What you reconsidered during this second look"
+}}"""
+        
+        messages = [{"role": "user", "content": prompt}]
+        response = ""
+        for chunk in self.client.chat_stream(self.model, messages, context_name="warning_aware_validation"):
+            response += chunk
+        
+        try:
+            double_check_result = json.loads(response)
+            
+            # Log the double-check decision
+            if self.report_generator:
+                status = "PASS (Double-Check)" if double_check_result['success'] else "RETRY (Confirmed)"
+                notes = double_check_result.get('double_check_notes', '')
+                self.report_generator.add_ai_decision(
+                    f"Double-Check {target_file['file_path']}",
+                    status,
+                    f"{double_check_result.get('reason', '')} | Notes: {notes}"
+                )
+            
+            # Return result with double-check metadata
+            return {
+                "success": double_check_result['success'],
+                "reason": double_check_result.get('reason', ''),
+                "double_checked": True,
+                "warning_eliminated": double_check_result.get('warning_eliminated', False),
+                "initial_concern": initial_reason,
+                "double_check_notes": double_check_result.get('double_check_notes', '')
+            }
+            
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse double-check validation response: {response}")
+            # Fall back to initial validation but mark as double-checked
+            return {
+                "success": initial_validation['success'],
+                "reason": initial_validation.get('reason', ''),
+                "double_checked": True,
+                "warning_eliminated": False,
+                "error": "Could not parse double-check response"
+            }
+    
+    def _get_language_from_path(self, file_path: str) -> str:
+        """Get language identifier from file path for markdown code blocks."""
+        ext_mapping = {
+            '.py': 'python',
+            '.js': 'javascript',
+            '.ts': 'typescript',
+            '.java': 'java',
+            '.cpp': 'cpp',
+            '.c': 'c',
+            '.cs': 'csharp',
+            '.go': 'go',
+            '.rs': 'rust',
+            '.rb': 'ruby',
+            '.php': 'php',
+            '.swift': 'swift',
+            '.kt': 'kotlin',
+            '.scala': 'scala',
+            '.html': 'html',
+            '.css': 'css',
+            '.json': 'json',
+            '.yaml': 'yaml',
+            '.yml': 'yaml',
+            '.toml': 'toml',
+            '.md': 'markdown',
+            '.sh': 'bash',
+            '.sql': 'sql',
+        }
+        
+        for ext, lang in ext_mapping.items():
+            if file_path.endswith(ext):
+                return lang
+        
+        # Special cases
+        if 'Dockerfile' in file_path:
+            return 'dockerfile'
+        if 'Makefile' in file_path:
+            return 'makefile'
+        
+        return 'text'
+    
     def run_full_modification_workflow(self, repo_path: Path, project_info: Dict) -> Dict[str, Any]:
-        """Run the complete file modification workflow.
+        """Run the iterative file modification workflow with validation.
         
         Args:
             repo_path: Repository path
@@ -627,31 +1005,104 @@ Generate a complete, well-organized TODO.md file that builds on the progress mad
         Returns:
             Dictionary with workflow results
         """
-        logger.info("Starting full file modification workflow")
+        logger.info("🔄 Starting iterative file modification workflow")
         
-        # Step 1: Select files to modify
-        file_operations = self.select_files_to_modify(repo_path, project_info)
+        MAX_FILES = 10
+        MAX_RETRIES_PER_FILE = 3
         
-        # Step 2: Execute operations
-        modified_files = self.execute_file_operations(repo_path, file_operations)
+        all_modified_files = []
+        all_file_operations = []
+        iteration_history = []
         
-        # Step 3: Update TODO.md with next steps
-        todo_updated = self._update_todo_file(repo_path, project_info, file_operations)
+        # Main loop: Continue until AI says we're done (up to MAX_FILES)
+        for file_num in range(MAX_FILES):
+            logger.info(f"\n📁 File iteration {file_num + 1}/{MAX_FILES}")
+            
+            # Ask AI if we should continue modifying files
+            should_continue = self._should_continue_modifying(repo_path, project_info, all_modified_files)
+            
+            if not should_continue:
+                logger.info("✅ AI decided modifications are complete")
+                break
+            
+            # AI selects which file to work on
+            target_file = self._select_single_file_to_modify(repo_path, project_info, all_modified_files)
+            
+            if not target_file:
+                logger.info("⚠️ AI couldn't select a file to modify")
+                break
+            
+            # Retry loop for this specific file
+            file_success = False
+            for retry_num in range(MAX_RETRIES_PER_FILE):
+                logger.info(f"  🔧 Attempt {retry_num + 1}/{MAX_RETRIES_PER_FILE} for {target_file['file_path']}")
+                
+                # Generate/modify the file content
+                file_content = self._generate_file_content_with_goal_reminder(
+                    repo_path, project_info, target_file, retry_num
+                )
+                
+                # Write the file
+                written_success = self._write_single_file(repo_path, target_file, file_content)
+                
+                if not written_success:
+                    logger.warning(f"  ❌ Failed to write {target_file['file_path']}")
+                    continue
+                
+                # AI validates the change
+                validation_result = self._validate_file_change(
+                    repo_path, target_file, file_content, project_info
+                )
+                
+                # Store iteration info for reporting
+                iteration_info = {
+                    "file_num": file_num + 1,
+                    "file_path": target_file['file_path'],
+                    "operation": target_file['operation'],
+                    "retry_num": retry_num + 1,
+                    "validation_success": validation_result['success'],
+                    "validation_reason": validation_result.get('reason', '')
+                }
+                iteration_history.append(iteration_info)
+                
+                if validation_result['success']:
+                    logger.info(f"  ✅ Validation passed: {validation_result.get('reason', 'File meets requirements')}")
+                    file_success = True
+                    all_modified_files.append(target_file['file_path'])
+                    all_file_operations.append(target_file)
+                    break
+                else:
+                    logger.info(f"  ⚠️ Validation failed: {validation_result.get('reason', 'Need to retry')}")
+            
+            if not file_success:
+                logger.warning(f"❌ Failed to successfully modify {target_file['file_path']} after {MAX_RETRIES_PER_FILE} attempts")
+        
+        # Update TODO.md with next steps
+        todo_updated = self._update_todo_file(repo_path, project_info, all_file_operations)
         if todo_updated:
-            modified_files.append("TODO.md")
+            all_modified_files.append("TODO.md")
         
-        # Step 4: Commit and push
-        success = self.commit_and_push_changes(repo_path, modified_files, project_info)
+        # Update report with iteration history
+        if self.report_generator:
+            self.report_generator.set_iteration_history(
+                iteration_history, len(iteration_history), file_num + 1
+            )
         
-        # Generate summary
+        # Commit and push
+        success = self.commit_and_push_changes(repo_path, all_modified_files, project_info)
+        
+        # Generate summary with iteration history
         result = {
-            "file_operations": file_operations,
-            "modified_files": modified_files,
+            "file_operations": all_file_operations,
+            "modified_files": all_modified_files,
             "todo_updated": todo_updated,
             "commit_success": success,
+            "iteration_history": iteration_history,
+            "total_iterations": len(iteration_history),
+            "files_attempted": file_num + 1,
             "decision_summary": self.decision_formatter.get_decision_summary(),
             "total_decisions": len(self.decision_formatter.decision_history)
         }
         
-        logger.info(f"File modification workflow complete. Modified {len(modified_files)} files.")
+        logger.info(f"🎯 Iterative workflow complete. Modified {len(all_modified_files)} files in {len(iteration_history)} iterations.")
         return result
