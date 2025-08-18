@@ -125,7 +125,7 @@ Your single-word decision:"""
         messages = [{"role": "user", "content": prompt}]
         response = ""
         
-        for chunk in client.chat_stream(model, messages):
+        for chunk in client.chat_stream(model, messages, context_name="decision_formatting"):
             response += chunk
         
         # Parse the response

@@ -8,6 +8,7 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+from .context_manager import context_manager
 
 try:
     from jinja2 import Template
@@ -97,7 +98,12 @@ class ReportGenerator:
             "processing_times": {},
             "token_usage": {},
             "ai_calls": 0,
-            "model_info": {}
+            "model_info": {},
+            "context_windows": {
+                "total_count": 0,
+                "total_memory_gb": 0.0,
+                "contexts": {}
+            }
         }
         
         # Log capture system
@@ -275,7 +281,7 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
             messages = [{"role": "user", "content": prompt}]
             response = ""
             
-            for chunk in log_analysis_client.chat_stream("gemma3:4b", messages):
+            for chunk in log_analysis_client.chat_stream("gemma3:4b", messages, context_name="log_analysis"):
                 response += chunk
             
             return response.strip()
@@ -406,7 +412,18 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
             "total_tokens": total_tokens
         }
         self.metrics["token_usage"]["total"] = total_tokens
-        logger.debug(f"Set model info: {model} ({total_tokens} tokens)")
+        
+        # Update context window metrics from context manager
+        context_summary = context_manager.get_context_summary()
+        self.metrics["context_windows"] = {
+            "total_count": context_summary["total_contexts"],
+            "total_memory_gb": context_summary["total_memory_gb"],
+            "total_api_calls": context_summary["total_api_calls"],
+            "contexts": context_summary["contexts"],
+            "api_call_log": context_summary["api_calls"]
+        }
+        
+        logger.debug(f"Set model info: {model} ({total_tokens} tokens, {context_summary['total_contexts']} context windows)")
     
     def _highlight_code(self, content: str, file_path: str) -> str:
         """Apply syntax highlighting to code content."""
@@ -808,6 +825,10 @@ grep -o 'Original Filename: [^"]*' latest.html
             <div class="section-content">
             <div class="executive-grid">
                 <div class="metric-card">
+                    <div class="metric-value">{{ metrics.context_windows.total_count or 0 }}</div>
+                    <div class="metric-label">CONTEXT WINDOWS</div>
+                </div>
+                <div class="metric-card">
                     <div class="metric-value">{{ executive_summary.total_ai_decisions or 0 }}</div>
                     <div class="metric-label">AI Decisions</div>
                 </div>
@@ -1154,8 +1175,16 @@ grep -o 'Original Filename: [^"]*' latest.html
             <div class="section-content">
             <div class="executive-grid">
                 <div class="metric-card">
-                    <div class="metric-value">{{ metrics.ai_calls or 0 }}</div>
-                    <div class="metric-label">AI API Calls</div>
+                    <div class="metric-value">{{ metrics.context_windows.total_count or 0 }}</div>
+                    <div class="metric-label">Context Windows</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{{ "%.6f"|format(metrics.context_windows.total_memory_gb or 0) }}</div>
+                    <div class="metric-label">Memory Usage (GB)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{{ metrics.context_windows.total_api_calls or 0 }}</div>
+                    <div class="metric-label">Total API Calls</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-value">{{ metrics.token_usage.total or 0 }}</div>
@@ -1167,7 +1196,7 @@ grep -o 'Original Filename: [^"]*' latest.html
                 </div>
                 <div class="metric-card">
                     <div class="metric-value">{{ metrics.model_info.context_window or 'N/A' }}</div>
-                    <div class="metric-label">Context Window</div>
+                    <div class="metric-label">Model Context Size</div>
                 </div>
             </div>
             
@@ -1186,6 +1215,52 @@ grep -o 'Original Filename: [^"]*' latest.html
                     {% endfor %}
                 </tbody>
             </table>
+            {% endif %}
+            
+            {% if metrics.context_windows.contexts %}
+            <h3>🧠 Context Windows Details</h3>
+            <div style="background: #f8fafc; padding: 1.5rem; border-radius: 12px; margin: 1rem 0; border: 1px solid #e2e8f0;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    <div style="background: white; padding: 1rem; border-radius: 8px; text-align: center; border-left: 4px solid #3b82f6;">
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #3b82f6;">{{ metrics.context_windows.total_count }}</div>
+                        <div style="color: #64748b; font-size: 0.875rem;">Total Context Windows</div>
+                    </div>
+                    <div style="background: white; padding: 1rem; border-radius: 8px; text-align: center; border-left: 4px solid #10b981;">
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #10b981;">{{ "%.6f"|format(metrics.context_windows.total_memory_gb) }}</div>
+                        <div style="color: #64748b; font-size: 0.875rem;">Total Memory (GB)</div>
+                    </div>
+                    <div style="background: white; padding: 1rem; border-radius: 8px; text-align: center; border-left: 4px solid #f59e0b;">
+                        <div style="font-size: 1.5rem; font-weight: bold; color: #f59e0b;">{{ metrics.context_windows.total_api_calls }}</div>
+                        <div style="color: #64748b; font-size: 0.875rem;">API Calls Made</div>
+                    </div>
+                </div>
+                
+                <h4 style="margin-bottom: 1rem; color: #374151;">📋 Context Window List</h4>
+                <div style="display: grid; gap: 0.75rem;">
+                    {% for context_name, context_data in metrics.context_windows.contexts.items() %}
+                    <div style="background: white; padding: 1rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <div style="font-weight: 600; color: #374151;">{{ context_name }}</div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <span style="background: #dbeafe; color: #1e40af; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                    Used {{ context_data.usage_count }} times
+                                </span>
+                                <span style="background: #dcfce7; color: #166534; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                    {{ context_data.memory_size_bytes|filesizeformat if context_data.memory_size_bytes else "0 bytes" }}
+                                </span>
+                            </div>
+                        </div>
+                        <div style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">
+                            Created: {{ context_data.created_at[:19] if context_data.created_at else "Unknown" }} | 
+                            Last used: {{ context_data.last_used[:19] if context_data.last_used else "Never" }}
+                        </div>
+                        <div style="font-family: 'Monaco', monospace; font-size: 0.8rem; color: #374151; background: #f9fafb; padding: 0.75rem; border-radius: 6px; border-left: 3px solid #d1d5db;">
+                            {{ context_data.content_preview }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
             {% endif %}
             </div>
         </div>

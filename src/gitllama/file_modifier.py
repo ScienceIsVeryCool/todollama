@@ -231,7 +231,7 @@ Content:"""
         messages = [{"role": "user", "content": prompt}]
         response = ""
         
-        for chunk in self.client.chat_stream(self.model, messages):
+        for chunk in self.client.chat_stream(self.model, messages, context_name="file_modification"):
             response += chunk
         
         return response.strip()
@@ -299,7 +299,7 @@ Generate a complete, well-organized TODO.md file that builds on the progress mad
         messages = [{"role": "user", "content": prompt}]
         response = ""
         
-        for chunk in self.client.chat_stream(self.model, messages):
+        for chunk in self.client.chat_stream(self.model, messages, context_name="file_modification"):
             response += chunk
         
         return response.strip()

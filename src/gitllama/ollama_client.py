@@ -4,6 +4,7 @@ import json
 import requests
 from typing import Dict, List, Optional, Generator, Tuple
 import logging
+from .context_manager import context_manager
 
 logger = logging.getLogger(__name__)
 
@@ -195,21 +196,31 @@ class OllamaClient:
             return False
     
     def chat_stream(self, model: str, messages: List[Dict[str, str]], 
-                   system: Optional[str] = None) -> Generator[str, None, None]:
+                   system: Optional[str] = None, context_name: str = "default") -> Generator[str, None, None]:
         """Stream chat responses from Ollama.
         
         Args:
             model: The model to use for chat
             messages: List of message dicts with 'role' and 'content'
             system: Optional system message
+            context_name: Name of context window to use/create
             
         Yields:
             Response chunks as strings
         """
-        # Log AI query with robot emoji
+        # Log AI query with robot emoji and context info
         user_message = messages[-1]['content'] if messages else "No message"
         query_preview = user_message[:100] + "..." if len(user_message) > 100 else user_message
-        logger.info(f"🤖 Querying {model}: {query_preview}")
+        logger.info(f"🤖 Querying {model} with context '{context_name}': {query_preview}")
+        
+        # Create/store context content for tracking
+        context_content = json.dumps({
+            "messages": messages,
+            "system": system,
+            "model": model
+        }, indent=2)
+        context_manager.get_or_create_context(context_name, context_content)
+        context_manager.use_context(context_name, f"AI query to {model}: {query_preview}")
         
         payload = {
             "model": model,

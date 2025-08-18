@@ -316,7 +316,7 @@ Provide specific insights about this project's planning and development focus:""
             messages = [{"role": "user", "content": single_todo_prompt}]
             response = ""
             
-            for chunk in self.client.chat_stream(self.model, messages):
+            for chunk in self.client.chat_stream(self.model, messages, context_name="branch_analysis"):
                 response += chunk
             
             return response.strip()
@@ -366,7 +366,7 @@ Provide specific, actionable insights that help with intelligent branch selectio
         messages = [{"role": "user", "content": prompt}]
         response = ""
         
-        for chunk in self.client.chat_stream(self.model, messages):
+        for chunk in self.client.chat_stream(self.model, messages, context_name="branch_selection"):
             response += chunk
         
         return response.strip()
@@ -699,7 +699,7 @@ Respond with ONLY the branch name, no explanation."""
         messages = [{"role": "user", "content": prompt}]
         response = ""
         
-        for chunk in self.client.chat_stream(self.model, messages):
+        for chunk in self.client.chat_stream(self.model, messages, context_name="branch_selection"):
             response += chunk
         
         branch_name = response.strip().lower().replace(' ', '-')

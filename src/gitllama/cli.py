@@ -10,6 +10,7 @@ import sys
 
 from .git_operations import GitAutomator, GitOperationError
 from .ai_coordinator import AICoordinator
+from .context_manager import context_manager
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -133,6 +134,11 @@ def main() -> int:
                 print(f"\n📊 Report Generated: {results['report_path']}")
                 print("   Open in browser to view detailed AI decision log and analysis")
             
+            # Display context window summary at end of runtime
+            print(f"\n🧠 Context Window Summary:")
+            print("=" * 50)
+            print(context_manager.get_context_list_for_runtime_display())
+            
             return 0
         else:
             print(f"✗ Workflow failed: {results['error']}")
@@ -140,6 +146,12 @@ def main() -> int:
             if results.get('report_path'):
                 print(f"📊 Error Report Generated: {results['report_path']}")
                 print("   Open in browser to view error details and partial analysis")
+            
+            # Display context window summary even on failure
+            print(f"\n🧠 Context Window Summary (Partial):")
+            print("=" * 50)
+            print(context_manager.get_context_list_for_runtime_display())
+            
             return 1
             
     except GitOperationError as e:

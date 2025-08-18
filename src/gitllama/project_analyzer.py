@@ -624,7 +624,7 @@ Answer this question concisely:
         messages = [{"role": "user", "content": prompt}]
         response = ""
         
-        for chunk in self.client.chat_stream(self.model, messages):
+        for chunk in self.client.chat_stream(self.model, messages, context_name="project_analysis"):
             response += chunk
         
         answer = response.strip()
@@ -741,7 +741,7 @@ Response in JSON format:
         messages = [{"role": "user", "content": prompt}]
         response = ""
         
-        for chunk in self.client.chat_stream(self.model, messages):
+        for chunk in self.client.chat_stream(self.model, messages, context_name="project_analysis"):
             response += chunk
         
         try:
@@ -852,7 +852,7 @@ Response in JSON format:
         messages = [{"role": "user", "content": prompt}]
         response = ""
         
-        for chunk_text in self.client.chat_stream(self.model, messages):
+        for chunk_text in self.client.chat_stream(self.model, messages, context_name="guided_questions"):
             response += chunk_text
         
         try:
@@ -941,7 +941,7 @@ Response in JSON format:
             messages = [{"role": "user", "content": prompt}]
             response = ""
             
-            for chunk in self.client.chat_stream(self.model, messages):
+            for chunk in self.client.chat_stream(self.model, messages, context_name="hierarchical_merge"):
                 response += chunk
             
             try:
