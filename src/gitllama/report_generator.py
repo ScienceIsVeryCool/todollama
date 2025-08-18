@@ -356,7 +356,8 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
                f"Captured {errors} errors and {warnings} warnings across {len(stats['top_modules'])} modules."
     
     def add_file_operation(self, operation: str, file_path: str, reason: str, 
-                          content: str = "", diff: str = ""):
+                          content: str = "", diff: str = "", trimmed: bool = False, 
+                          trimming_details: str = ""):
         """Add a file operation to the report."""
         operation_data = {
             "timestamp": datetime.now(),
@@ -365,7 +366,10 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
             "reason": reason,
             "content_preview": content[:2000] if content else "",
             "diff": diff,
-            "highlighted_content": self._highlight_code(content, file_path) if content else ""
+            "highlighted_content": self._highlight_code(content, file_path) if content else "",
+            "was_trimmed": trimmed,
+            "trimming_details": trimming_details,
+            "trimming_emoji": "✂️" if trimmed else "📄"
         }
         self.file_operations.append(operation_data)
         logger.debug(f"Added file operation: {operation} {file_path}")
@@ -719,6 +723,11 @@ grep -o 'Original Filename: [^"]*' latest.html
             background: #fef3c7; color: #92400e; border: 1px solid #f59e0b;
             padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;
             margin-left: 0.5rem; font-weight: 600;
+        }
+        .trimming-badge {
+            background: #f3f4f6; color: #374151; border: 1px solid #d1d5db;
+            padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;
+            margin-left: 0.5rem; cursor: help;
         }
         .file-op.has-warning { border-left: 4px solid #f59e0b; }
         .file-op.has-warning .file-op-header { background: #fffbeb; }
@@ -1125,6 +1134,9 @@ grep -o 'Original Filename: [^"]*' latest.html
                         <strong>{{ op.file_path }}</strong>
                         {% if '⚠️' in op.reason %}
                         <span class="warning-badge">⚠️ WARNING</span>
+                        {% endif %}
+                        {% if op.trimming_emoji %}
+                        <span class="trimming-badge" title="{{ op.trimming_details if op.trimming_details else 'No trimming applied' }}">{{ op.trimming_emoji }}</span>
                         {% endif %}
                     </div>
                     <small>{{ op.timestamp.strftime('%H:%M:%S') }}</small>

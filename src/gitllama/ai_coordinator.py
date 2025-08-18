@@ -14,6 +14,7 @@ from .ai_decision_formatter import AIDecisionFormatter
 from .file_modifier import FileModifier
 from .report_generator import ReportGenerator
 from .context_manager import context_manager
+from .ai_output_parser import ai_output_parser
 
 logger = logging.getLogger(__name__)
 
@@ -235,9 +236,9 @@ Choose one operation:
 
 Respond in JSON format:
 {{
-    "operation": "CREATE|MODIFY|DELETE",
+    "operation": "CREATE|MODIFY|DELETE", 
     "file_path": "path/to/file",
-    "content": "file content here (for CREATE/MODIFY)",
+    "content": "For CREATE/MODIFY: wrap complete file content in markdown code blocks with appropriate language identifier, e.g. ```python\\n# content here\\n```",
     "reason": "brief explanation of why this improves the project"
 }}"""
         
@@ -376,16 +377,29 @@ Respond with ONLY the commit message, no explanation."""
             
             if op['operation'] == 'CREATE':
                 file_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Parse AI output for clean content
+                raw_content = op.get('content', '')
+                parse_result = ai_output_parser.parse_for_file_content(raw_content, op['file_path'])
+                
                 with open(file_path, 'w') as f:
-                    f.write(op.get('content', ''))
-                logger.info(f"Created file: {op['file_path']}")
+                    f.write(parse_result.content)
+                
+                emoji = ai_output_parser.get_trimming_emoji_indicator(parse_result)
+                logger.info(f"Created file: {op['file_path']} {emoji}")
                 modified_files.append(op['file_path'])
                 
             elif op['operation'] == 'MODIFY':
                 if file_path.exists():
+                    # Parse AI output for clean content
+                    raw_content = op.get('content', '')
+                    parse_result = ai_output_parser.parse_for_file_content(raw_content, op['file_path'])
+                    
                     with open(file_path, 'w') as f:
-                        f.write(op.get('content', ''))
-                    logger.info(f"Modified file: {op['file_path']}")
+                        f.write(parse_result.content)
+                    
+                    emoji = ai_output_parser.get_trimming_emoji_indicator(parse_result)
+                    logger.info(f"Modified file: {op['file_path']} {emoji}")
                     modified_files.append(op['file_path'])
                 else:
                     logger.warning(f"File to modify does not exist: {op['file_path']}")

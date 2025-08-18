@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from .ai_decision_formatter import AIDecisionFormatter
 from .ollama_client import OllamaClient
+from .ai_output_parser import ai_output_parser
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ class FileModifier:
         self.decision_formatter = AIDecisionFormatter(report_generator)
         self.selected_files: List[Dict[str, Any]] = []
         self.report_generator = report_generator
+        
+        # Track parsing results for report generation
+        self.parsing_results = {}
         
         logger.info(f"FileModifier initialized with model: {model}")
     
@@ -216,17 +220,27 @@ Context:
 {context}
 
 File: {file_path}
-Operation: {operation}
+Operation: {operation} (COMPLETE FILE OVERWRITE)
 
 {f'Existing content preview: {existing_content}' if existing_content else ''}
 
 Generate appropriate file content that:
 1. Serves the project's needs
-2. Is well-formatted and professional
+2. Is well-formatted and professional  
 3. Includes helpful comments/documentation
 4. Follows best practices for the file type
 
-Content:"""
+IMPORTANT: You MUST wrap the complete file content in a markdown code block using the appropriate language identifier. For example:
+
+```python
+# Your complete file content here
+def example():
+    pass
+```
+
+The content inside the code block will be written directly to the file. Any text outside the code block will be ignored.
+
+Generate the complete file content now:"""
         
         messages = [{"role": "user", "content": prompt}]
         response = ""
@@ -234,7 +248,13 @@ Content:"""
         for chunk in self.client.chat_stream(self.model, messages, context_name="file_modification"):
             response += chunk
         
-        return response.strip()
+        # Parse the AI output to extract clean code content
+        parse_result = ai_output_parser.parse_for_file_content(response, file_path)
+        
+        # Store parsing info for reporting
+        self._store_parsing_result(file_path, operation, parse_result)
+        
+        return parse_result.content
     
     def _generate_todo_update(self, repo_path: Path, project_info: Dict, completed_operations: List[Dict[str, Any]]) -> str:
         """Generate updated TODO.md content based on what was accomplished."""
@@ -294,6 +314,14 @@ INSTRUCTIONS:
 7. Don't remove items unless you're confident they're no longer needed
 8. Focus on maintaining project momentum - what should happen next?
 
+IMPORTANT: Wrap your complete TODO.md content in a markdown code block:
+
+```markdown
+# TODO
+
+Your complete TODO.md content here...
+```
+
 Generate a complete, well-organized TODO.md file that builds on the progress made:"""
         
         messages = [{"role": "user", "content": prompt}]
@@ -302,7 +330,13 @@ Generate a complete, well-organized TODO.md file that builds on the progress mad
         for chunk in self.client.chat_stream(self.model, messages, context_name="file_modification"):
             response += chunk
         
-        return response.strip()
+        # Parse the AI output to extract clean markdown content
+        parse_result = ai_output_parser.parse_for_file_content(response, "TODO.md")
+        
+        # Store parsing info for reporting
+        self._store_parsing_result("TODO.md", "UPDATE", parse_result)
+        
+        return parse_result.content
     
     def _update_todo_file(self, repo_path: Path, project_info: Dict, completed_operations: List[Dict[str, Any]]) -> bool:
         """Update the TODO.md file with next steps after completing operations.
@@ -334,9 +368,17 @@ Generate a complete, well-organized TODO.md file that builds on the progress mad
             # Hook into report generator
             if self.report_generator:
                 operation_type = "MODIFY" if file_existed else "CREATE"
+                
+                # Get trimming info from stored parsing results
+                parsing_info = self.parsing_results.get("TODO.md", {})
+                was_trimmed = parsing_info.get('was_trimmed', False)
+                trimming_details = parsing_info.get('detailed_info', '')
+                
                 self.report_generator.add_file_operation(
                     operation_type, "TODO.md", "AI updated project TODO list with next priorities",
-                    content=new_todo_content
+                    content=new_todo_content,
+                    trimmed=was_trimmed,
+                    trimming_details=trimming_details
                 )
             
             return True
@@ -388,9 +430,17 @@ Generate a complete, well-organized TODO.md file that builds on the progress mad
                         reason = op.get('reason', 'AI decision')
                         if warning_msg:
                             reason = f"{reason} ({warning_msg})"
+                        
+                        # Get trimming info from stored parsing results
+                        parsing_info = self.parsing_results.get(op['file_path'], {})
+                        was_trimmed = parsing_info.get('was_trimmed', False)
+                        trimming_details = parsing_info.get('detailed_info', '')
+                        
                         self.report_generator.add_file_operation(
                             "CREATE", op['file_path'], reason,
-                            content=op.get('content', '')
+                            content=op.get('content', ''),
+                            trimmed=was_trimmed,
+                            trimming_details=trimming_details
                         )
                 
                 elif op['operation'] == 'MODIFY':
@@ -410,9 +460,16 @@ Generate a complete, well-organized TODO.md file that builds on the progress mad
                         
                         # Hook into report generator
                         if self.report_generator:
+                            # Get trimming info from stored parsing results
+                            parsing_info = self.parsing_results.get(op['file_path'], {})
+                            was_trimmed = parsing_info.get('was_trimmed', False)
+                            trimming_details = parsing_info.get('detailed_info', '')
+                            
                             self.report_generator.add_file_operation(
                                 "MODIFY", op['file_path'], op.get('reason', 'AI decision'),
                                 content=op.get('content', ''),
+                                trimmed=was_trimmed,
+                                trimming_details=trimming_details,
                                 diff=f"Original length: {len(original_content)}, New length: {len(op.get('content', ''))}"
                             )
                     else:
@@ -544,6 +601,21 @@ Generate a complete, well-organized TODO.md file that builds on the progress mad
             commit_message = f"{commit_type}: update {len(modified_files)} files for {next_priority[:30]}"
         
         return commit_message
+    
+    def _store_parsing_result(self, file_path: str, operation: str, parse_result):
+        """Store parsing result for report generation"""
+        self.parsing_results[file_path] = {
+            'operation': operation,
+            'was_trimmed': parse_result.was_trimmed,
+            'trimming_details': parse_result.trimming_details,
+            'original_length': parse_result.original_length,
+            'final_length': parse_result.final_length,
+            'emoji_indicator': ai_output_parser.get_trimming_emoji_indicator(parse_result),
+            'detailed_info': ai_output_parser.get_detailed_trimming_info(parse_result)
+        }
+        
+        logger.info(f"📝 File {file_path}: {parse_result.original_length} → {parse_result.final_length} chars "
+                   f"({ai_output_parser.get_trimming_emoji_indicator(parse_result)} trimmed: {parse_result.was_trimmed})")
     
     def run_full_modification_workflow(self, repo_path: Path, project_info: Dict) -> Dict[str, Any]:
         """Run the complete file modification workflow.
