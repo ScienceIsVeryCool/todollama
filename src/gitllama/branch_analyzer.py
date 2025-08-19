@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Tuple
 from .ollama_client import OllamaClient
+from .ai_query import AIQuery  # NEW: Use simple query interface
 from .ai_decision_formatter import AIDecisionFormatter
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class BranchAnalyzer:
         """
         self.client = client
         self.model = model
+        self.ai = AIQuery(client, model)  # NEW: Use simple query interface
         self.branch_analyses = {}  # Store analysis of each branch
         self.decision_formatter = AIDecisionFormatter(report_generator)
         self.report_generator = report_generator
@@ -517,108 +519,52 @@ Provide specific, actionable insights that help with intelligent branch selectio
     def _step3_make_branch_decision(self, current_branch: str, 
                                    reuse_candidates: List[Dict], 
                                    project_info: Dict) -> Dict:
-        """STEP 3: Decide whether to reuse or create new branch.
-        
-        This step makes the key decision with AI assistance.
-        Future enhancements could include:
-        - User preference learning
-        - Risk assessment
-        - Team conventions checking
-        
-        Args:
-            current_branch: Currently checked out branch
-            reuse_candidates: List of reuse candidates
-            project_info: Project analysis
-            
-        Returns:
-            Decision dictionary
-        """
+        """STEP 3: Decide whether to reuse or create new branch."""
         logger.info(f"  Making branch selection decision")
         
-        # Prepare context for AI decision
-        context_parts = [
-            f"Current branch: {current_branch}",
-            f"Project type: {project_info.get('project_type', 'unknown')}",
-            f"Number of reuse candidates: {len(reuse_candidates)}"
-        ]
+        # Prepare context
+        context = f"Current branch: {current_branch}\n"
+        context += f"Project type: {project_info.get('project_type', 'unknown')}\n"
         
         if reuse_candidates:
-            context_parts.append("\nTop reuse candidates:")
-            for candidate in reuse_candidates[:3]:
-                context_parts.append(f"  - {candidate['branch_name']} (score: {candidate['score']})")
-                context_parts.append(f"    Reasons: {', '.join(candidate['reasons'])}")
+            context += f"Found {len(reuse_candidates)} reusable branches"
         
-        context = "\n".join(context_parts)
-        
-        # Strong bias towards reusing existing branches (80% probability if good candidates exist)
-        reuse_threshold = 30  # Minimum score to consider reuse
-        has_good_candidates = any(c['score'] >= reuse_threshold for c in reuse_candidates)
-        
-        # Use single-word decision system
-        if has_good_candidates:
-            # First decision: Should we REUSE or CREATE?
-            action_decision, _ = self.decision_formatter.make_ai_decision(
-                client=self.client,
-                model=self.model,
-                context=context,
-                question="Should we reuse an existing branch or create a new one?",
-                options=["REUSE", "CREATE"],
-                additional_context=f"Strong preference for REUSE when candidates have score >= {reuse_threshold}"
+        # Simple choice: reuse or create?
+        if reuse_candidates and reuse_candidates[0]['score'] >= 30:
+            # We have good candidates
+            action_result = self.ai.choice(
+                question="Should we reuse an existing branch or create new?",
+                options=["REUSE existing branch", "CREATE new branch"],
+                context=context
             )
             
-            if action_decision == "REUSE" and reuse_candidates:
-                # Second decision: Which branch to reuse?
-                branch_options = [c['branch_name'] for c in reuse_candidates[:5]]  # Top 5 candidates
-                
-                selected_branch, _ = self.decision_formatter.make_ai_decision(
-                    client=self.client,
-                    model=self.model,
-                    context=f"Available branches: {', '.join(branch_options)}",
-                    question="Which existing branch should we reuse?",
+            if "REUSE" in action_result.value:
+                # Pick which branch
+                branch_options = [c['branch_name'] for c in reuse_candidates[:5]]
+                branch_result = self.ai.choice(
+                    question="Which branch should we reuse?",
                     options=branch_options,
-                    additional_context="Choose the most suitable branch for development"
+                    context=f"Top candidates with scores: {[(c['branch_name'], c['score']) for c in reuse_candidates[:5]]}"
                 )
                 
-                decision = {
+                return {
                     'decision': 'REUSE',
-                    'selected_branch': selected_branch,
-                    'reasoning': f"AI selected existing branch: {selected_branch}"
+                    'selected_branch': branch_result.value,
+                    'reasoning': f"Reusing existing branch with score {reuse_candidates[0]['score']}"
                 }
-            else:
-                # Create new branch - decide type
-                branch_type, _ = self.decision_formatter.make_ai_decision(
-                    client=self.client,
-                    model=self.model,
-                    context=context,
-                    question="What type of new branch should we create?",
-                    options=["feature", "fix", "docs", "chore"],
-                    additional_context="Choose based on the project's current needs"
-                )
-                
-                decision = {
-                    'decision': 'CREATE',
-                    'new_branch_type': branch_type,
-                    'reasoning': f"AI chose to create new {branch_type} branch"
-                }
-        else:
-            # No good candidates - create new branch
-            branch_type, _ = self.decision_formatter.make_ai_decision(
-                client=self.client,
-                model=self.model,
-                context=context,
-                question="What type of new branch should we create?",
-                options=["feature", "fix", "docs", "chore"],
-                additional_context=f"No suitable existing branches found. Creating for {project_info.get('project_type', 'project')} project."
-            )
-            
-            decision = {
-                'decision': 'CREATE',
-                'new_branch_type': branch_type,
-                'reasoning': f"No suitable candidates found, creating new {branch_type} branch"
-            }
         
-        logger.info(f"    Final Decision: {decision['decision']} - {decision.get('reasoning', 'No reason provided')}")
-        return decision
+        # Create new branch
+        type_result = self.ai.choice(
+            question="What type of new branch should we create?",
+            options=["feature", "fix", "docs", "chore"],
+            context=context
+        )
+        
+        return {
+            'decision': 'CREATE',
+            'new_branch_type': type_result.value,
+            'reasoning': f"Creating new {type_result.value} branch"
+        }
     
     # ============================================================
     # STEP 4: GENERATE/SELECT BRANCH NAME

@@ -165,7 +165,7 @@ class GitAutomator:
             logger.info(f"AI understanding: {project_info}")
             
             # Step 2: Run iterative file modification workflow
-            workflow_result = self.ai_coordinator.modify_files(self.repo_path, project_info)
+            workflow_result = self.ai_coordinator.run_file_modification_workflow(self.repo_path, project_info)
             modified_files = workflow_result.get('modified_files', [])
             
             return modified_files
@@ -247,9 +247,17 @@ class GitAutomator:
         if not branch:
             branch = "main"
         
-        # Push changes
-        result = self._run_git_command(['git', 'push', 'origin', branch])
-        logger.info("🔧 Git: Successfully pushed changes")
+        # Push changes (with --set-upstream for new branches)
+        try:
+            result = self._run_git_command(['git', 'push', 'origin', branch])
+            logger.info("🔧 Git: Successfully pushed changes")
+        except subprocess.CalledProcessError as e:
+            if "no upstream branch" in str(e.stderr):
+                logger.info("🔧 Git: Setting upstream branch...")
+                result = self._run_git_command(['git', 'push', '--set-upstream', 'origin', branch])
+                logger.info("🔧 Git: Successfully pushed changes with upstream")
+            else:
+                raise
         
         return branch
     

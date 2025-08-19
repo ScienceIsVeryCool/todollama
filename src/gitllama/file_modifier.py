@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from .ai_decision_formatter import AIDecisionFormatter
 from .ollama_client import OllamaClient
+from .ai_query import AIQuery  # NEW: Simple query interface
 from .ai_output_parser import ai_output_parser
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class FileModifier:
         """
         self.client = client
         self.model = model
+        self.ai = AIQuery(client, model)  # NEW: Simple query interface
         self.decision_formatter = AIDecisionFormatter(report_generator)
         self.selected_files: List[Dict[str, Any]] = []
         self.report_generator = report_generator
@@ -621,36 +623,21 @@ Generate a complete, well-organized TODO.md file that builds on the progress mad
         """Ask AI if we should continue modifying files."""
         logger.info("🤔 Asking AI if more modifications are needed")
         
-        context = self._build_file_selection_context(project_info, list(repo_path.rglob("*")))
-        modified_summary = "\n".join([f"- {f}" for f in modified_files]) if modified_files else "None yet"
+        context = f"Project type: {project_info.get('project_type', 'unknown')}\n"
+        context += f"Files already modified: {modified_files if modified_files else 'None'}"
         
-        prompt = f"""Based on the project analysis and files already modified, should we continue making modifications?
-
-PROJECT CONTEXT:
-{context}
-
-FILES ALREADY MODIFIED:
-{modified_summary}
-
-Consider:
-1. Have we addressed the main priorities?
-2. Are there critical files that still need work?
-3. Would additional changes add significant value?
-
-Answer with YES to continue modifying files, or NO if modifications are complete.
-Respond with ONLY 'YES' or 'NO'."""
+        result = self.ai.choice(
+            question="Should we continue modifying more files?",
+            options=["YES - Continue modifying", "NO - Changes are sufficient"],
+            context=context
+        )
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
-        for chunk in self.client.chat_stream(self.model, messages, context_name="continue_decision"):
-            response += chunk
-        
-        decision = "YES" in response.upper()
+        decision = "YES" in result.value
         
         if self.report_generator:
             self.report_generator.add_ai_decision(
                 "Continue Modifying Files",
-                "YES" if decision else "NO",
+                result.value,
                 f"Modified {len(modified_files)} files so far"
             )
         
@@ -708,84 +695,28 @@ Respond in JSON format:
                                                  target_file: Dict, retry_num: int) -> str:
         """Generate file content with goal reminder for retries."""
         file_path = target_file['file_path']
-        operation = target_file['operation']
         goal = target_file.get('goal', 'Improve the project')
         
-        # Build context
-        context_parts = []
-        if 'project_type' in project_info:
-            context_parts.append(f"Project Type: {project_info['project_type']}")
-        if 'main_language' in project_info:
-            context_parts.append(f"Main Language: {project_info['main_language']}")
-        if 'synthesis' in project_info:
-            synthesis = project_info['synthesis']
-            if 'next_priority' in synthesis:
-                context_parts.append(f"Next Priority: {synthesis['next_priority']}")
+        context = f"Project Type: {project_info.get('project_type', 'unknown')}\n"
+        context += f"File: {file_path}\n"
+        context += f"Goal: {goal}"
         
-        context = "\n".join(context_parts)
-        
-        # Read existing content if MODIFY
-        existing_content = ""
-        if operation == "MODIFY":
-            try:
-                full_path = repo_path / file_path
-                if full_path.exists():
-                    with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        existing_content = f.read()[:2000]
-            except Exception as e:
-                logger.debug(f"Could not read existing file {file_path}: {e}")
-        
-        # Add retry context if this is a retry
-        retry_context = ""
         if retry_num > 0:
-            retry_context = f"""
-⚠️ RETRY ATTEMPT {retry_num + 1}/3: The previous attempt did not meet requirements.
-
-REMINDER OF YOUR GOAL:
-{goal}
-
-Please ensure the file content:
-1. Directly addresses the stated goal
-2. Is complete and functional
-3. Follows project conventions
-4. Includes necessary imports/dependencies
-"""
+            context += f"\nThis is retry attempt {retry_num + 1}/3. Previous attempt did not meet requirements."
         
+        # Get language for the file
         language = self._get_language_from_path(file_path)
-        existing_preview = f'Existing content preview:\n{existing_content}' if existing_content else ''
         
-        prompt = f"""Generate content for this file operation:
-
-Context:
-{context}
-
-File: {file_path}
-Operation: {operation} (COMPLETE FILE OVERWRITE)
-Goal: {goal}
-{retry_context}
-
-{existing_preview}
-
-Generate complete file content that achieves the stated goal.
-
-IMPORTANT: Wrap the complete file content in a markdown code block:
-
-```{language}
-# Complete file content here
-```
-
-Generate the file now:"""
+        prompt = f"Generate complete content for this file. Wrap in ```{language} code blocks."
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
-        for chunk in self.client.chat_stream(self.model, messages, context_name="file_content_generation"):
-            response += chunk
+        result = self.ai.open(prompt=prompt, context=context)
         
-        # Parse with our AI output parser
-        parse_result = ai_output_parser.parse_for_file_content(response, file_path)
-        self._store_parsing_result(file_path, operation, parse_result)
+        # Extract code from response
+        from .response_parser import ResponseParser
+        parser = ResponseParser()
+        content = parser.extract_code(result.content)
         
-        return parse_result.content
+        return content
     
     def _write_single_file(self, repo_path: Path, target_file: Dict, content: str) -> bool:
         """Write a single file to disk."""
@@ -816,38 +747,35 @@ Generate the file now:"""
             return False
     
     def _validate_file_change(self, repo_path: Path, target_file: Dict, content: str, project_info: Dict) -> Dict[str, Any]:
-        """AI validates if the file change was successful with warning elimination."""
+        """AI validates if the file change was successful."""
         logger.info(f"🔍 Validating {target_file['file_path']}")
         
-        file_path = repo_path / target_file['file_path']
         goal = target_file.get('goal', 'Improve the project')
         
-        # Read the actual file content
-        actual_content = ""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                actual_content = f.read()
-        except Exception as e:
-            logger.error(f"Could not read file for validation: {e}")
-            return {"success": False, "reason": f"Could not read file: {e}"}
+        result = self.ai.choice(
+            question="Does this file change meet its goal?",
+            options=[
+                "Perfect - No changes needed",
+                "Good - Minor improvements possible", 
+                "Needs work - Retry required",
+                "Failed - Major issues"
+            ],
+            context=f"File: {target_file['file_path']}\nGoal: {goal}\nContent length: {len(content)} chars"
+        )
         
-        # Step 1: Initial validation
-        initial_validation = self._perform_initial_validation(target_file, actual_content, goal)
+        success = "Perfect" in result.value or "Good" in result.value
         
-        # Step 2: If there are concerns, perform double-check with warning awareness
-        if not initial_validation['success'] or '⚠️' in initial_validation.get('reason', ''):
-            logger.info(f"🔄 Performing double-check validation for {target_file['file_path']}")
-            return self._perform_warning_aware_validation(target_file, actual_content, goal, initial_validation)
-        
-        # Log successful validation
         if self.report_generator:
             self.report_generator.add_ai_decision(
                 f"Validate {target_file['file_path']}",
-                "PASS",
-                initial_validation.get('reason', '')
+                "PASS" if success else "RETRY",
+                result.value
             )
         
-        return initial_validation
+        return {
+            "success": success,
+            "reason": result.value
+        }
     
     def _perform_initial_validation(self, target_file: Dict, actual_content: str, goal: str) -> Dict[str, Any]:
         """Perform the initial validation check."""
