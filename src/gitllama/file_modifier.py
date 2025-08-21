@@ -244,11 +244,12 @@ The content inside the code block will be written directly to the file. Any text
 
 Generate the complete file content now:"""
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
-        
-        for chunk in self.client.chat_stream(self.model, messages, context_name="file_modification"):
-            response += chunk
+        result = self.ai.open(
+            prompt=prompt,
+            context="",
+            context_name="file_generation"
+        )
+        response = result.raw
         
         # Parse the AI output to extract clean code content
         parse_result = ai_output_parser.parse_for_file_content(response, file_path)
@@ -326,11 +327,12 @@ Your complete TODO.md content here...
 
 Generate a complete, well-organized TODO.md file that builds on the progress made:"""
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
-        
-        for chunk in self.client.chat_stream(self.model, messages, context_name="file_modification"):
-            response += chunk
+        result = self.ai.open(
+            prompt=prompt,
+            context="",
+            context_name="todo_update"
+        )
+        response = result.raw
         
         # Parse the AI output to extract clean markdown content
         parse_result = ai_output_parser.parse_for_file_content(response, "TODO.md")
@@ -558,13 +560,39 @@ Generate a complete, well-organized TODO.md file that builds on the progress mad
             
             # Push changes
             logger.info("Pushing changes to remote...")
-            result = subprocess.run(
-                ['git', 'push'],
-                cwd=repo_path,
-                capture_output=True,
-                text=True,
-                check=True
-            )
+            try:
+                result = subprocess.run(
+                    ['git', 'push'],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+            except subprocess.CalledProcessError as e:
+                # Check if this is an upstream branch issue
+                if "has no upstream branch" in str(e.stderr) or "no upstream branch" in str(e.stderr):
+                    logger.info("Setting upstream branch...")
+                    # Get current branch name
+                    branch_result = subprocess.run(
+                        ['git', 'branch', '--show-current'],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    current_branch = branch_result.stdout.strip() or "main"
+                    
+                    # Push with upstream
+                    result = subprocess.run(
+                        ['git', 'push', '--set-upstream', 'origin', current_branch],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    logger.info("Successfully pushed with upstream set")
+                else:
+                    raise
             
             logger.info("✓ Successfully committed and pushed changes")
             return True
@@ -670,10 +698,12 @@ Respond in JSON format:
     "reason": "Why this file is important for the project"
 }}"""
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
-        for chunk in self.client.chat_stream(self.model, messages, context_name="file_selection"):
-            response += chunk
+        result = self.ai.open(
+            prompt=prompt,
+            context="",
+            context_name="file_selection"
+        )
+        response = result.raw
         
         try:
             file_decision = json.loads(response)
@@ -800,10 +830,12 @@ Respond in JSON format:
     "reason": "Brief explanation of your validation decision"
 }}"""
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
-        for chunk in self.client.chat_stream(self.model, messages, context_name="initial_validation"):
-            response += chunk
+        result = self.ai.open(
+            prompt=prompt,
+            context="",
+            context_name="initial_validation"
+        )
+        response = result.raw
         
         try:
             return json.loads(response)
@@ -844,10 +876,12 @@ Respond in JSON format:
     "double_check_notes": "What you reconsidered during this second look"
 }}"""
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
-        for chunk in self.client.chat_stream(self.model, messages, context_name="warning_aware_validation"):
-            response += chunk
+        result = self.ai.open(
+            prompt=prompt,
+            context="",
+            context_name="warning_validation"
+        )
+        response = result.raw
         
         try:
             double_check_result = json.loads(response)

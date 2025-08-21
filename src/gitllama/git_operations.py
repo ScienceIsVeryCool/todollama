@@ -251,8 +251,8 @@ class GitAutomator:
         try:
             result = self._run_git_command(['git', 'push', 'origin', branch])
             logger.info("🔧 Git: Successfully pushed changes")
-        except subprocess.CalledProcessError as e:
-            if "no upstream branch" in str(e.stderr):
+        except GitOperationError as e:
+            if "no upstream branch" in str(e) or "has no upstream branch" in str(e):
                 logger.info("🔧 Git: Setting upstream branch...")
                 result = self._run_git_command(['git', 'push', '--set-upstream', 'origin', branch])
                 logger.info("🔧 Git: Successfully pushed changes with upstream")

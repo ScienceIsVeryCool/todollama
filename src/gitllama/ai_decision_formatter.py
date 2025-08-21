@@ -7,6 +7,7 @@ import logging
 import re
 from typing import List, Tuple, Dict, Any
 from difflib import SequenceMatcher
+from .ai_query import AIQuery
 
 logger = logging.getLogger(__name__)
 
@@ -121,12 +122,14 @@ Your single-word decision:"""
         logger.info("║" + " AI DECISION PROMPT ".center(80) + "║")
         logger.info("╚" + "═" * 80 + "╝")
         
-        # Make the AI call
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
-        
-        for chunk in client.chat_stream(model, messages, context_name="decision_formatting"):
-            response += chunk
+        # Make the AI call using AIQuery interface
+        ai = AIQuery(client, model)
+        result = ai.open(
+            prompt=prompt,
+            context="",
+            context_name="decision_formatting"
+        )
+        response = result.raw
         
         # Parse the response
         selected_option, confidence = self.parse_single_word_response(response, options)

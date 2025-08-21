@@ -278,14 +278,15 @@ Respond in JSON format:
     "reason": "brief explanation of why this improves the project"
 }}"""
         
-        messages = [{"role": "user", "content": prompt}]
-        
         # Use context manager for this AI call
         context_manager.use_context("file_operations_decision", "Deciding file operations based on project analysis")
         
-        response = ""
-        for chunk in self.client.chat_stream(self.model, messages, context_name="file_operations_decision"):
-            response += chunk
+        result = self.ai.open(
+            prompt=prompt,
+            context="",
+            context_name="file_operations_decision"
+        )
+        response = result.raw
         
         try:
             operation = json.loads(response)

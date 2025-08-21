@@ -315,13 +315,13 @@ Content:
 
 Provide specific insights about this project's planning and development focus:"""
             
-            messages = [{"role": "user", "content": single_todo_prompt}]
-            response = ""
+            result = self.ai.open(
+                prompt=single_todo_prompt,
+                context="",
+                context_name="todo_analysis"
+            )
             
-            for chunk in self.client.chat_stream(self.model, messages, context_name="branch_analysis"):
-                response += chunk
-            
-            return response.strip()
+            return result.content
         
         # Build context for AI comparison
         context_parts = [
@@ -365,13 +365,13 @@ BRANCH TODO.md FILES TO ANALYZE:
 
 Provide specific, actionable insights that help with intelligent branch selection:"""
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
+        result = self.ai.open(
+            prompt=prompt,
+            context="",
+            context_name="todo_comparison"
+        )
         
-        for chunk in self.client.chat_stream(self.model, messages, context_name="branch_selection"):
-            response += chunk
-        
-        return response.strip()
+        return result.content
     
     def _get_current_branch(self) -> str:
         """Get the currently checked out branch name."""
@@ -642,13 +642,13 @@ Technologies in project: {', '.join(project_info.get('technologies', [])[:5])}
 
 Respond with ONLY the branch name, no explanation."""
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
+        result = self.ai.open(
+            prompt=prompt,
+            context="",
+            context_name="branch_naming"
+        )
         
-        for chunk in self.client.chat_stream(self.model, messages, context_name="branch_selection"):
-            response += chunk
-        
-        branch_name = response.strip().lower().replace(' ', '-')
+        branch_name = result.content.lower().replace(' ', '-')
         
         # Sanitize and validate
         if not branch_name.startswith(f"{branch_type}/"):

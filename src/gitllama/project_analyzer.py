@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from .ollama_client import OllamaClient
+from .ai_query import AIQuery
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class ProjectAnalyzer:
         """
         self.client = client
         self.model = model
+        self.ai = AIQuery(client, model)  # Add AIQuery interface
         self.guided_questions = []  # Store guided questions and answers
         self.report_generator = report_generator
         
@@ -129,7 +131,7 @@ class ProjectAnalyzer:
             logger.error(f"Failed to get current branch: {e}")
             return "unknown"
     
-    def _get_all_branches(self, repo_path: Path) -> List[str]:
+    def _get_all_branches(self, repo_path: Path, _fetch_attempted: bool = False) -> List[str]:
         """Get all local and remote branches."""
         try:
             # Get ALL branches (local and remote) using git branch -a
@@ -179,8 +181,8 @@ class ProjectAnalyzer:
             # Convert set to sorted list for consistent ordering
             all_branches = sorted(list(branches_set))
             
-            # If we only found one branch and it's main/master, try to fetch all remote branches
-            if len(all_branches) == 1 and all_branches[0] in ['main', 'master']:
+            # If we only found one branch and it's main/master, try to fetch all remote branches (but only once)
+            if len(all_branches) == 1 and all_branches[0] in ['main', 'master'] and not _fetch_attempted:
                 logger.info("Only found main/master branch, fetching all remote branches...")
                 try:
                     # Fetch all remote branches
@@ -191,10 +193,12 @@ class ProjectAnalyzer:
                         text=True,
                         check=True
                     )
-                    # Recursively call ourselves to get the updated branch list
-                    return self._get_all_branches(repo_path)
+                    # Recursively call ourselves to get the updated branch list (with fetch attempted flag)
+                    return self._get_all_branches(repo_path, _fetch_attempted=True)
                 except subprocess.CalledProcessError:
                     logger.warning("Failed to fetch remote branches")
+            elif len(all_branches) == 1 and _fetch_attempted:
+                logger.info("Still only one branch after fetch attempt - proceeding with single branch")
             
             return all_branches
             
@@ -615,19 +619,16 @@ class ProjectAnalyzer:
         """
         logger.info(f"📝 Guided Question: {question}")
         
-        prompt = f"""Based on this context:
-{context}
-
-Answer this question concisely:
+        prompt = f"""Answer this question concisely:
 {question}"""
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
+        result = self.ai.open(
+            prompt=prompt,
+            context=context,
+            context_name="guided_questions"
+        )
         
-        for chunk in self.client.chat_stream(self.model, messages, context_name="project_analysis"):
-            response += chunk
-        
-        answer = response.strip()
+        answer = result.content
         logger.info(f"   Answer: {answer[:100]}..." if len(answer) > 100 else f"   Answer: {answer}")
         
         # Store in local list
@@ -719,10 +720,7 @@ Answer this question concisely:
         # Ask for synthesis
         logger.info(f"🤖 AI: Generating synthesis and next steps recommendation")
         
-        prompt = f"""Based on this repository analysis:
-{context}
-
-Provide a synthesis with:
+        prompt = f"""Provide a synthesis with:
 1. What is the immediate next development priority?
 2. Which branch should be worked on (or should a new one be created)?
 3. What specific tasks should be accomplished in the next coding session?
@@ -738,11 +736,13 @@ Response in JSON format:
     "confidence": "high|medium|low"
 }}"""
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
+        result = self.ai.open(
+            prompt=prompt,
+            context=context,
+            context_name="synthesis"
+        )
         
-        for chunk in self.client.chat_stream(self.model, messages, context_name="project_analysis"):
-            response += chunk
+        response = result.raw
         
         try:
             synthesis = json.loads(response)
@@ -849,11 +849,13 @@ Response in JSON format:
     "analysis_focus": ""
 }}"""
         
-        messages = [{"role": "user", "content": prompt}]
-        response = ""
+        result = self.ai.open(
+            prompt=prompt,
+            context=context,
+            context_name="chunk_analysis"
+        )
         
-        for chunk_text in self.client.chat_stream(self.model, messages, context_name="guided_questions"):
-            response += chunk_text
+        response = result.raw
         
         try:
             analysis = json.loads(response)
@@ -938,11 +940,13 @@ Response in JSON format:
     "state": ""
 }}"""
             
-            messages = [{"role": "user", "content": prompt}]
-            response = ""
+            result = self.ai.open(
+                prompt=prompt,
+                context=context,
+                context_name="hierarchical_merge"
+            )
             
-            for chunk in self.client.chat_stream(self.model, messages, context_name="hierarchical_merge"):
-                response += chunk
+            response = result.raw
             
             try:
                 merged = json.loads(response)
