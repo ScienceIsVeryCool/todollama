@@ -63,8 +63,7 @@ class AIQuery:
         messages = [{"role": "user", "content": prompt}]
         
         logger.info(f"🎯 Choice: {question[:50]}... ({len(options)} options)")
-        context_manager.get_or_create_context(context_name, f"Choice context for: {question[:50]}")
-        context_manager.use_context(context_name, f"Choice: {question[:50]}")
+        context_manager.record_ai_call("choice", question[:50])
         
         # Get response
         response = ""
@@ -107,8 +106,7 @@ class AIQuery:
         messages = [{"role": "user", "content": full_prompt}]
         
         logger.info(f"📝 Open: {prompt[:50]}...")
-        context_manager.get_or_create_context(context_name, f"Open context for: {prompt[:50]}")
-        context_manager.use_context(context_name, f"Open: {prompt[:50]}")
+        context_manager.record_ai_call("open", prompt[:50])
         
         # Get response
         response = ""

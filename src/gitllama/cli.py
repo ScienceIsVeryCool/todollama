@@ -121,10 +121,10 @@ def main() -> int:
                 print(f"\n📊 Report Generated: {results['report_path']}")
                 print("   Open in browser to view detailed AI decision log and analysis")
             
-            # Display context window summary at end of runtime
-            print(f"\n🧠 Context Window Summary:")
+            # Display AI operations summary at end of runtime
+            print(f"\n🧠 AI Operations Summary:")
             print("=" * 50)
-            print(context_manager.get_context_list_for_runtime_display())
+            print(context_manager.get_display_summary())
             
             return 0
         else:
@@ -135,9 +135,9 @@ def main() -> int:
                 print("   Open in browser to view error details and partial analysis")
             
             # Display context window summary even on failure
-            print(f"\n🧠 Context Window Summary (Partial):")
+            print(f"\n🧠 AI Operations Summary (Partial):")
             print("=" * 50)
-            print(context_manager.get_context_list_for_runtime_display())
+            print(context_manager.get_display_summary())
             
             return 1
             

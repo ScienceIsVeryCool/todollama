@@ -425,17 +425,15 @@ Provide a concise 3-4 sentence executive summary focusing on execution health an
         }
         self.metrics["token_usage"]["total"] = total_tokens
         
-        # Update context window metrics from context manager
-        context_summary = context_manager.get_context_summary()
-        self.metrics["context_windows"] = {
-            "total_count": context_summary["total_contexts"],
-            "total_memory_gb": context_summary["total_memory_gb"],
-            "total_api_calls": context_summary["total_api_calls"],
-            "contexts": context_summary["contexts"],
-            "api_call_log": context_summary["api_calls"]
+        # Update AI operation metrics from context manager
+        metrics_summary = context_manager.get_summary()
+        self.metrics["ai_operations"] = {
+            "total_calls": metrics_summary["total_calls"],
+            "runtime_seconds": metrics_summary["runtime_seconds"],
+            "operations": metrics_summary["operations"]
         }
         
-        logger.debug(f"Set model info: {model} ({total_tokens} tokens, {context_summary['total_contexts']} context windows)")
+        logger.debug(f"Set model info: {model} ({total_tokens} tokens, {metrics_summary['total_calls']} AI operations)")
     
     def _highlight_code(self, content: str, file_path: str) -> str:
         """Apply syntax highlighting to code content."""

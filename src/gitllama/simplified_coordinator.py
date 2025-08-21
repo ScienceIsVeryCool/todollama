@@ -90,13 +90,10 @@ class SimplifiedCoordinator:
         logger.info("Generating final HTML report...")
         
         # Set executive summary for simplified workflow
-        # Count decisions from AI query contexts
+        # Get metrics from context manager
         from .context_manager import context_manager
-        try:
-            total_decisions = len([ctx for ctx in context_manager.contexts.values() 
-                                 if 'open' in ctx.name or 'choice' in ctx.name])
-        except (AttributeError, TypeError):
-            total_decisions = 0
+        metrics = context_manager.get_summary()
+        total_decisions = metrics['total_calls']
         
         self.report_generator.set_executive_summary(
             repo_path=repo_path,
@@ -109,12 +106,8 @@ class SimplifiedCoordinator:
         
         # Set model information
         context_size = self.client.get_model_context_size(self.model)
-        # Estimate total tokens used from context manager
-        try:
-            estimated_tokens = sum(len(str(ctx.content)) // 4 
-                                 for ctx in context_manager.contexts.values())
-        except (AttributeError, TypeError):
-            estimated_tokens = 0
+        # Estimate tokens from operation count (rough estimate)
+        estimated_tokens = total_decisions * 1000  # Rough estimate
         
         self.report_generator.set_model_info(
             model=self.model,

@@ -213,14 +213,8 @@ class OllamaClient:
         query_preview = user_message[:100] + "..." if len(user_message) > 100 else user_message
         logger.info(f"🤖 Querying {model} with context '{context_name}': {query_preview}")
         
-        # Create/store context content for tracking
-        context_content = json.dumps({
-            "messages": messages,
-            "system": system,
-            "model": model
-        }, indent=2)
-        context_manager.get_or_create_context(context_name, context_content)
-        context_manager.use_context(context_name, f"AI query to {model}: {query_preview}")
+        # Record AI call for metrics
+        context_manager.record_ai_call("stream_chat", f"{model}: {query_preview}")
         
         payload = {
             "model": model,
