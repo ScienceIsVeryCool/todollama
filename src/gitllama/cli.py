@@ -9,7 +9,7 @@ import logging
 import sys
 
 from .git_operations import GitAutomator, GitOperationError
-from .ai_coordinator import AICoordinator
+from .ollama_client import OllamaClient
 from .context_manager import context_manager
 
 
@@ -79,16 +79,11 @@ def main() -> int:
     )
     
     try:
-        # Initialize AI coordinator (always enabled)
-        print(f"🤖 Initializing GitLlama with AI model: {args.model}")
-        ai_coordinator = AICoordinator(
-            model=args.model,
-            base_url=args.ollama_url,
-            repo_url=args.git_url
-        )
-        
         # Test Ollama connection
-        if not ai_coordinator.client.is_available():
+        print(f"🤖 Initializing GitLlama with AI model: {args.model}")
+        client = OllamaClient(args.ollama_url)
+        
+        if not client.is_available():
             print("⚠️  Warning: Ollama server not available.")
             print("   GitLlama requires Ollama for AI features. Please ensure Ollama is running:")
             print("   Install: https://ollama.ai")
@@ -96,12 +91,14 @@ def main() -> int:
             print("   Pull model: ollama pull gemma3:4b")
             return 1
         
-        # Run the AI-powered workflow
-        print("🚀 Running AI workflow with intelligent decision-making...")
-        with GitAutomator(ai_coordinator=ai_coordinator) as automator:
+        # Run the TODO-driven workflow
+        print("🚀 Running TODO-driven workflow...")
+        with GitAutomator() as automator:
             results = automator.run_full_workflow(
                 git_url=args.git_url,
-                branch_name=args.branch
+                branch_name=args.branch,
+                model=args.model,
+                base_url=args.ollama_url
             )
         
         # Print results
@@ -112,22 +109,12 @@ def main() -> int:
             print(f"  Modified files: {', '.join(results['modified_files'])}")
             print(f"  Commit: {results['commit_hash']}")
             
-            # AI analysis and decision summary
-            if 'total_ai_decisions' in results:
-                print(f"  AI Decisions Made: {results['total_ai_decisions']}")
-            
-            if 'ai_analysis' in results:
-                print(f"\n🤖 AI Analysis:")
-                analysis = results['ai_analysis']
-                print(f"  Project Type: {analysis.get('project_type', 'Unknown')}")
-                print(f"  Technologies: {', '.join(analysis.get('technologies', []))}")
-                print(f"  State: {analysis.get('state', 'Unknown')}")
-                
-                # Show synthesis if available
-                if analysis.get('synthesis'):
-                    synthesis = analysis['synthesis']
-                    print(f"  Next Priority: {synthesis.get('next_priority', 'Unknown')}")
-                    print(f"  Recommended Tasks: {', '.join(synthesis.get('immediate_tasks', [])[:3])}")
+            # TODO-driven workflow info
+            if results.get('todo_driven'):
+                print(f"\n🎯 TODO-Driven Analysis Complete")
+                if 'plan' in results:
+                    plan_lines = results['plan'].split('\n')[:3]  # Show first 3 lines
+                    print(f"  Plan: {' '.join(plan_lines)[:100]}...")  # Truncate
             
             # Show report path if available
             if results.get('report_path'):

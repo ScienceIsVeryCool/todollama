@@ -21,19 +21,17 @@ class GitOperationError(Exception):
 
 
 class GitAutomator:
-    """AI-powered git automation class."""
+    """TODO-driven git automation class."""
     
-    def __init__(self, working_dir: Optional[str] = None, ai_coordinator=None):
-        """Initialize the GitAutomator with optional AI coordinator.
+    def __init__(self, working_dir: Optional[str] = None):
+        """Initialize the GitAutomator.
         
         Args:
             working_dir: Optional working directory path
-            ai_coordinator: Optional AICoordinator instance for AI-powered operations
         """
         self.working_dir = Path(working_dir) if working_dir else Path(tempfile.mkdtemp())
         self.repo_path: Optional[Path] = None
         self.original_cwd = os.getcwd()
-        self.ai_coordinator = ai_coordinator
         
     def __enter__(self):
         return self
@@ -148,38 +146,23 @@ class GitAutomator:
     
     def make_changes(self) -> list:
         """
-        Make changes to the repository using AI decisions.
-        Falls back to simple change if no AI coordinator.
+        Fallback method to make simple changes.
         """
         if not self.repo_path:
             raise GitOperationError("No repository cloned. Call clone_repository first.")
         
-        logger.info("Making changes to repository")
+        logger.info("Making simple fallback changes to repository")
         
-        if self.ai_coordinator:
-            # AI-powered changes
-            logger.info("Using AI to determine changes")
-            
-            # Step 1: Explore the repository
-            project_info = self.ai_coordinator.explore_repository(self.repo_path)
-            logger.info(f"AI understanding: {project_info}")
-            
-            # Step 2: Run iterative file modification workflow
-            workflow_result = self.ai_coordinator.run_file_modification_workflow(self.repo_path, project_info)
-            modified_files = workflow_result.get('modified_files', [])
-            
-            return modified_files
-        else:
-            # Simple default change - create a file
-            filename = "gitllama_was_here.txt"
-            content = "This file was created by GitLlama automation tool."
-            
-            file_path = self.repo_path / filename
-            with open(file_path, 'w') as f:
-                f.write(content)
-            
-            logger.info(f"Created file: {filename}")
-            return [filename]
+        # Simple default change - create a file
+        filename = "gitllama_was_here.txt"
+        content = "This file was created by GitLlama automation tool."
+        
+        file_path = self.repo_path / filename
+        with open(file_path, 'w') as f:
+            f.write(content)
+        
+        logger.info(f"Created file: {filename}")
+        return [filename]
     
     def commit_changes(self) -> str:
         """Commit changes to the repository with AI-generated commit message."""
@@ -205,21 +188,8 @@ class GitAutomator:
             logger.warning("No staged changes to commit after git add")
             return "no-changes"
         
-        # Generate AI commit message (always)
-        if self.ai_coordinator and hasattr(self.ai_coordinator, 'context_window'):
-            # Get AI-generated commit message based on operations
-            operations = None
-            for ctx in reversed(self.ai_coordinator.context_window):
-                if ctx.get('type') == 'file_operation':
-                    operations = [ctx.get('operation')]
-                    break
-            
-            if operations:
-                message = self.ai_coordinator.generate_commit_message(operations)
-            else:
-                message = "feat: automated improvements by GitLlama AI"
-        else:
-            message = "feat: automated improvements by GitLlama AI"
+        # Generate commit message
+        message = "feat: automated improvements by GitLlama AI"
         
         # Commit changes
         self._run_git_command(['git', 'commit', '-m', message])
@@ -261,201 +231,77 @@ class GitAutomator:
         
         return branch
     
-    def run_full_workflow(self, git_url: str, branch_name: Optional[str] = None) -> dict:
-        """Run the complete git automation workflow with simplified TODO-driven approach"""
-        logger.info("Starting simplified TODO-driven GitLlama workflow")
+    def run_full_workflow(self, git_url: str, branch_name: Optional[str] = None, model: str = "gemma3:4b", base_url: str = "http://localhost:11434") -> dict:
+        """Run the simplified TODO-driven GitLlama workflow"""
+        logger.info("Starting TODO-driven GitLlama workflow")
         
-        # Check if we should use simplified workflow
-        use_simplified = True  # Can be made configurable
-        
-        if use_simplified and self.ai_coordinator:
-            # Import simplified coordinator
-            from .simplified_coordinator import SimplifiedCoordinator
-            simplified = SimplifiedCoordinator(
-                model=self.ai_coordinator.model,
-                base_url=self.ai_coordinator.client.base_url,
-                git_url=git_url
-            )
-            
-            try:
-                # Step 1: Clone repository
-                repo_path = self.clone_repository(git_url)
-                
-                # Step 2: Run simplified TODO workflow
-                logger.info("🎯 Running simplified TODO-driven workflow")
-                result = simplified.run_todo_workflow(repo_path)
-                
-                # Step 3: Create/checkout branch
-                if not branch_name:
-                    branch_name = result['branch_name']
-                
-                # Ensure branch_name is not None
-                if not branch_name:
-                    branch_name = "gitllama-todo-automation"
-                
-                self.checkout_branch(branch_name)
-                
-                # Step 4: Commit changes
-                if result['modified_files']:
-                    commit_hash = self.commit_changes()
-                    self.push_changes(branch=branch_name)
-                else:
-                    commit_hash = "no-changes"
-                
-                # Step 5: Generate final report
-                report_path = None
-                if hasattr(simplified, 'generate_final_report'):
-                    try:
-                        report_path = simplified.generate_final_report(
-                            repo_path=str(repo_path),
-                            branch=branch_name,
-                            modified_files=result['modified_files'],
-                            commit_hash=commit_hash,
-                            success=True
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to generate report: {e}")
-                
-                return {
-                    "success": True,
-                    "repo_path": str(repo_path),
-                    "branch": branch_name,
-                    "modified_files": result['modified_files'],
-                    "commit_hash": commit_hash,
-                    "plan": result['plan'],
-                    "todo_driven": True,
-                    "message": "Simplified TODO-driven workflow completed",
-                    "report_path": str(report_path) if report_path else None
-                }
-                
-            except Exception as e:
-                logger.error(f"Simplified workflow failed: {e}")
-                
-                # Generate failure report
-                report_path = None
-                if hasattr(simplified, 'generate_final_report'):
-                    try:
-                        report_path = simplified.generate_final_report(
-                            repo_path=str(repo_path) if 'repo_path' in locals() else "",
-                            branch=branch_name or "unknown",
-                            modified_files=[],
-                            commit_hash="failed",
-                            success=False
-                        )
-                    except Exception as report_error:
-                        logger.warning(f"Failed to generate error report: {report_error}")
-                
-                return {
-                    "success": False, 
-                    "error": str(e),
-                    "report_path": str(report_path) if report_path else None
-                }
-        
-        # Fall back to original workflow
-        logger.info("Starting AI-powered GitLlama workflow")
-        
-        if not self.ai_coordinator:
-            logger.error("GitLlama requires an AI coordinator to function")
-            return {
-                "success": False,
-                "error": "No AI coordinator available. GitLlama requires Ollama to be running."
-            }
-        
-        # Update AI coordinator with git URL for report generation
-        if hasattr(self.ai_coordinator, 'report_generator') and self.ai_coordinator.report_generator is None:
-            from .report_generator import ReportGenerator
-            self.ai_coordinator.report_generator = ReportGenerator(git_url)
-            # Update all components with the new report generator
-            self.ai_coordinator.project_analyzer.report_generator = self.ai_coordinator.report_generator
-            self.ai_coordinator.branch_analyzer.report_generator = self.ai_coordinator.report_generator
-            self.ai_coordinator.decision_formatter.report_generator = self.ai_coordinator.report_generator
-            self.ai_coordinator.file_modifier.report_generator = self.ai_coordinator.report_generator
+        # Import simplified coordinator
+        from .simplified_coordinator import SimplifiedCoordinator
+        simplified = SimplifiedCoordinator(
+            model=model,
+            base_url=base_url,
+            git_url=git_url
+        )
         
         try:
             # Step 1: Clone repository
             repo_path = self.clone_repository(git_url)
             
-            # Step 2: AI Repository Analysis
-            logger.info("🔍 Phase 1: AI Repository Analysis")
-            project_info = self.ai_coordinator.explore_repository(repo_path, analyze_all_branches=True)
-            logger.info("AI Project Analysis Complete")
+            # Step 2: Run simplified TODO workflow
+            logger.info("🎯 Running TODO-driven workflow")
+            result = simplified.run_todo_workflow(repo_path)
             
-            # Step 3: AI Branch Selection
-            logger.info("🔀 Phase 2: AI Branch Selection")
+            # Step 3: Create/checkout branch
             if not branch_name:
-                branch_name = self.ai_coordinator.decide_branch_name(self.repo_path, project_info)
-                logger.info(f"AI selected branch name: {branch_name}")
-            else:
-                logger.info(f"Using provided branch name: {branch_name}")
+                branch_name = result['branch_name']
             
             # Ensure branch_name is not None
             if not branch_name:
-                branch_name = "gitllama-automation"
+                branch_name = "gitllama-todo-automation"
             
             self.checkout_branch(branch_name)
             
-            # Step 4: AI File Modification Workflow
-            logger.info("📝 Phase 3: AI File Modification Workflow")
-            workflow_result = self.ai_coordinator.run_file_modification_workflow(repo_path, project_info)
-            
-            # Extract results
-            modified_files = workflow_result.get("modified_files", [])
-            commit_success = workflow_result.get("commit_success", False)
-            
-            if not commit_success or not modified_files:
-                # Fallback to traditional method if AI workflow didn't work
-                logger.info("Falling back to traditional file operations")
-                modified_files = self.make_changes()
-                commit_hash = self.commit_changes()  # AI generates message
-                
-                if commit_hash != "no-changes":
-                    self.push_changes(branch=branch_name)
-                    logger.info(f"Successfully pushed to branch: {branch_name}")
-                else:
-                    logger.warning("No changes were committed, skipping push")
-                    commit_hash = "no-changes"
+            # Step 4: Commit changes
+            if result['modified_files']:
+                commit_hash = self.commit_changes()
+                self.push_changes(branch=branch_name)
             else:
-                # Enhanced workflow already handled commit and push
-                commit_hash = "ai-workflow"
+                commit_hash = "no-changes"
             
-            logger.info("AI workflow completed successfully")
-            
-            # Generate final HTML report
+            # Step 5: Generate final report
             report_path = None
-            if hasattr(self.ai_coordinator, 'generate_final_report'):
+            if hasattr(simplified, 'generate_final_report'):
                 try:
-                    report_path = self.ai_coordinator.generate_final_report(
+                    report_path = simplified.generate_final_report(
                         repo_path=str(repo_path),
                         branch=branch_name,
-                        modified_files=modified_files,
+                        modified_files=result['modified_files'],
                         commit_hash=commit_hash,
                         success=True
                     )
                 except Exception as e:
                     logger.warning(f"Failed to generate report: {e}")
             
-            result = {
+            return {
                 "success": True,
                 "repo_path": str(repo_path),
                 "branch": branch_name,
-                "modified_files": modified_files,
+                "modified_files": result['modified_files'],
                 "commit_hash": commit_hash,
-                "message": "AI workflow completed successfully",
-                "ai_analysis": project_info,
-                "total_ai_decisions": workflow_result.get("total_decisions", 0),
+                "plan": result['plan'],
+                "todo_driven": True,
+                "message": "TODO-driven workflow completed",
                 "report_path": str(report_path) if report_path else None
             }
             
-            return result
-            
         except Exception as e:
-            logger.error(f"Workflow failed: {e}")
+            logger.error(f"TODO workflow failed: {e}")
             
             # Generate failure report
             report_path = None
-            if hasattr(self.ai_coordinator, 'generate_final_report'):
+            if hasattr(simplified, 'generate_final_report'):
                 try:
-                    report_path = self.ai_coordinator.generate_final_report(
+                    report_path = simplified.generate_final_report(
                         repo_path=str(repo_path) if 'repo_path' in locals() else "",
                         branch=branch_name or "unknown",
                         modified_files=[],
@@ -466,7 +312,7 @@ class GitAutomator:
                     logger.warning(f"Failed to generate error report: {report_error}")
             
             return {
-                "success": False,
+                "success": False, 
                 "error": str(e),
                 "report_path": str(report_path) if report_path else None
             }
