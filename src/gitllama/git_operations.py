@@ -262,7 +262,61 @@ class GitAutomator:
         return branch
     
     def run_full_workflow(self, git_url: str, branch_name: Optional[str] = None) -> dict:
-        """Run the complete AI-powered git automation workflow."""
+        """Run the complete git automation workflow with simplified TODO-driven approach"""
+        logger.info("Starting simplified TODO-driven GitLlama workflow")
+        
+        # Check if we should use simplified workflow
+        use_simplified = True  # Can be made configurable
+        
+        if use_simplified and self.ai_coordinator:
+            # Import simplified coordinator
+            from .simplified_coordinator import SimplifiedCoordinator
+            simplified = SimplifiedCoordinator(
+                model=self.ai_coordinator.model,
+                base_url=self.ai_coordinator.client.base_url
+            )
+            
+            try:
+                # Step 1: Clone repository
+                repo_path = self.clone_repository(git_url)
+                
+                # Step 2: Run simplified TODO workflow
+                logger.info("🎯 Running simplified TODO-driven workflow")
+                result = simplified.run_todo_workflow(repo_path)
+                
+                # Step 3: Create/checkout branch
+                if not branch_name:
+                    branch_name = result['branch_name']
+                
+                # Ensure branch_name is not None
+                if not branch_name:
+                    branch_name = "gitllama-todo-automation"
+                
+                self.checkout_branch(branch_name)
+                
+                # Step 4: Commit changes
+                if result['modified_files']:
+                    commit_hash = self.commit_changes()
+                    self.push_changes(branch=branch_name)
+                else:
+                    commit_hash = "no-changes"
+                
+                return {
+                    "success": True,
+                    "repo_path": str(repo_path),
+                    "branch": branch_name,
+                    "modified_files": result['modified_files'],
+                    "commit_hash": commit_hash,
+                    "plan": result['plan'],
+                    "todo_driven": True,
+                    "message": "Simplified TODO-driven workflow completed"
+                }
+                
+            except Exception as e:
+                logger.error(f"Simplified workflow failed: {e}")
+                return {"success": False, "error": str(e)}
+        
+        # Fall back to original workflow
         logger.info("Starting AI-powered GitLlama workflow")
         
         if not self.ai_coordinator:
