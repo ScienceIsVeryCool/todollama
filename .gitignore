@@ -158,3 +158,5 @@ Desktop.ini
 # Project specific
 /temp/
 /tmp/
+.OLD*
+gitllama_report*

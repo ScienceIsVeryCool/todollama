@@ -5,10 +5,8 @@ Simplified AI Coordinator for TODO-driven development
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional
-from .ollama_client import OllamaClient
-from .todo_analyzer import TodoAnalyzer
-from .todo_planner import TodoPlanner
-from .todo_executor import TodoExecutor
+from ..ai import OllamaClient
+from ..todo import TodoAnalyzer, TodoPlanner, TodoExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +25,7 @@ class SimplifiedCoordinator:
         self.report_generator = None
         if git_url:
             try:
-                from .report_generator import ReportGenerator
+                from ..utils.reports import ReportGenerator
                 self.report_generator = ReportGenerator(git_url)
                 logger.info("Report generator initialized")
             except ImportError as e:
@@ -91,7 +89,7 @@ class SimplifiedCoordinator:
         
         # Set executive summary for simplified workflow
         # Get metrics from context manager
-        from .context_manager import context_manager
+        from ..utils.metrics import context_manager
         metrics = context_manager.get_summary()
         total_decisions = metrics['total_calls']
         

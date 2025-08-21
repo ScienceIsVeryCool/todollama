@@ -6,9 +6,9 @@ Simple, clean interface for multiple choice and open response queries
 import logging
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
-from .ollama_client import OllamaClient
-from .context_manager import context_manager
-from .response_parser import ResponseParser
+from .client import OllamaClient
+from ..utils.metrics import context_manager
+from .parser import ResponseParser
 
 logger = logging.getLogger(__name__)
 

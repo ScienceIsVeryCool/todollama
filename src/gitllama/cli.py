@@ -8,9 +8,9 @@ import argparse
 import logging
 import sys
 
-from .git_operations import GitAutomator, GitOperationError
-from .ollama_client import OllamaClient
-from .context_manager import context_manager
+from .core import GitAutomator, GitOperationError
+from .ai import OllamaClient
+from .utils.metrics import context_manager
 
 
 def create_parser() -> argparse.ArgumentParser:

@@ -8,8 +8,8 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from .context_manager import context_manager
-from . import __version__
+from .metrics import context_manager
+from .. import __version__
 
 try:
     from jinja2 import Template

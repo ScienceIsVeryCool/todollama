@@ -236,7 +236,7 @@ class GitAutomator:
         logger.info("Starting TODO-driven GitLlama workflow")
         
         # Import simplified coordinator
-        from .simplified_coordinator import SimplifiedCoordinator
+        from .coordinator import SimplifiedCoordinator
         simplified = SimplifiedCoordinator(
             model=model,
             base_url=base_url,

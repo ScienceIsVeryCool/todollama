@@ -6,12 +6,9 @@ Simple git automation with AI decision-making: clone, branch, change, commit, pu
 
 __version__ = "0.7.2"
 
-from .git_operations import GitAutomator, GitOperationError
-from .ollama_client import OllamaClient
-from .simplified_coordinator import SimplifiedCoordinator
-from .todo_analyzer import TodoAnalyzer
-from .todo_planner import TodoPlanner
-from .todo_executor import TodoExecutor
+from .core import GitAutomator, GitOperationError, SimplifiedCoordinator
+from .ai import OllamaClient
+from .todo import TodoAnalyzer, TodoPlanner, TodoExecutor
 
 __all__ = [
     "GitAutomator",

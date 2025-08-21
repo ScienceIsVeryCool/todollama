@@ -4,7 +4,7 @@ import json
 import requests
 from typing import Dict, List, Optional, Generator, Tuple
 import logging
-from .context_manager import context_manager
+from ..utils.metrics import context_manager
 
 logger = logging.getLogger(__name__)
 

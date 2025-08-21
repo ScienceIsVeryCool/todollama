@@ -6,8 +6,7 @@ Executes the planned file operations
 import logging
 from pathlib import Path
 from typing import Dict, List
-from .ollama_client import OllamaClient
-from .ai_query import AIQuery
+from ..ai import OllamaClient, AIQuery
 
 logger = logging.getLogger(__name__)
 

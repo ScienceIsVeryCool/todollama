@@ -6,8 +6,7 @@ Creates actionable plans based on TODO analysis
 import logging
 from pathlib import Path
 from typing import Dict, List, Tuple
-from .ollama_client import OllamaClient
-from .ai_query import AIQuery
+from ..ai import OllamaClient, AIQuery
 
 logger = logging.getLogger(__name__)
 
