@@ -273,7 +273,8 @@ class GitAutomator:
             from .simplified_coordinator import SimplifiedCoordinator
             simplified = SimplifiedCoordinator(
                 model=self.ai_coordinator.model,
-                base_url=self.ai_coordinator.client.base_url
+                base_url=self.ai_coordinator.client.base_url,
+                git_url=git_url
             )
             
             try:
@@ -301,6 +302,20 @@ class GitAutomator:
                 else:
                     commit_hash = "no-changes"
                 
+                # Step 5: Generate final report
+                report_path = None
+                if hasattr(simplified, 'generate_final_report'):
+                    try:
+                        report_path = simplified.generate_final_report(
+                            repo_path=str(repo_path),
+                            branch=branch_name,
+                            modified_files=result['modified_files'],
+                            commit_hash=commit_hash,
+                            success=True
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to generate report: {e}")
+                
                 return {
                     "success": True,
                     "repo_path": str(repo_path),
@@ -309,12 +324,32 @@ class GitAutomator:
                     "commit_hash": commit_hash,
                     "plan": result['plan'],
                     "todo_driven": True,
-                    "message": "Simplified TODO-driven workflow completed"
+                    "message": "Simplified TODO-driven workflow completed",
+                    "report_path": str(report_path) if report_path else None
                 }
                 
             except Exception as e:
                 logger.error(f"Simplified workflow failed: {e}")
-                return {"success": False, "error": str(e)}
+                
+                # Generate failure report
+                report_path = None
+                if hasattr(simplified, 'generate_final_report'):
+                    try:
+                        report_path = simplified.generate_final_report(
+                            repo_path=str(repo_path) if 'repo_path' in locals() else "",
+                            branch=branch_name or "unknown",
+                            modified_files=[],
+                            commit_hash="failed",
+                            success=False
+                        )
+                    except Exception as report_error:
+                        logger.warning(f"Failed to generate error report: {report_error}")
+                
+                return {
+                    "success": False, 
+                    "error": str(e),
+                    "report_path": str(report_path) if report_path else None
+                }
         
         # Fall back to original workflow
         logger.info("Starting AI-powered GitLlama workflow")

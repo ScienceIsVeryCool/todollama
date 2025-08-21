@@ -106,30 +106,6 @@ result = ai.open(
 )
 ```
 
-## Python API
-
-```python
-from gitllama import GitAutomator, AICoordinator
-
-# With AI automation
-factory = AICoordinator(model="gemma3:4b")
-with GitAutomator(ai_coordinator=factory) as automator:
-    results = automator.run_full_workflow(
-        git_url="https://github.com/user/repo.git"
-    )
-    
-    print(f"Branch: {results['branch']}")
-    print(f"Modified: {results['modified_files']}")
-
-# Without AI
-with GitAutomator() as automator:
-    results = automator.run_full_workflow(
-        git_url="https://github.com/user/repo.git",
-        branch_name="my-branch",
-        commit_message="My changes"
-    )
-```
-
 ## Architecture
 
 ```
