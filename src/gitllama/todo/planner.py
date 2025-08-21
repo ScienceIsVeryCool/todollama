@@ -117,15 +117,19 @@ Respond with ONLY the branch name, no explanation."""
         files = []
         max_iterations = 20  # Safety limit
         
-        context = f"""Action Plan:
+        for i in range(max_iterations):
+            # Build context with already selected files
+            selected_files = [f['path'] for f in files]
+            context = f"""Action Plan:
 {plan}
 
 TODO excerpt:
 {todo_content[:500]}
 
-Files collected so far: {[f['path'] for f in files]}"""
-        
-        for i in range(max_iterations):
+Files already selected: {selected_files if selected_files else 'None yet'}
+
+IMPORTANT: Do NOT select any file that is already in the list above. Pick a NEW file that hasn't been selected yet."""
+            
             # Ask for next file or DONE
             result = self.ai.choice(
                 question=f"File #{i+1}: Name the next file to work on (with path) or say you're done",
@@ -146,11 +150,39 @@ Files collected so far: {[f['path'] for f in files]}"""
             # Parse the file path
             file_path = self._parse_file_path(result.value)
             
+            # Check for duplicates
+            if self._is_duplicate_file(file_path, files):
+                logger.warning(f"Duplicate file detected: {file_path}. Asking AI to try again.")
+                
+                # Ask AI to pick a different file
+                retry_result = self.ai.choice(
+                    question=f"The file '{file_path}' is already selected. Pick a DIFFERENT file:",
+                    options=[
+                        "DONE - No more files needed",
+                        "src/another_file.py",
+                        "lib/helper.py",
+                        "config/different_config.json",
+                        "tests/new_test.py"
+                    ],
+                    context=f"Already selected files: {selected_files}\nAvoid selecting: {file_path}"
+                )
+                
+                if "DONE" in retry_result.value:
+                    logger.info("AI chose to finish after duplicate detection")
+                    break
+                
+                file_path = self._parse_file_path(retry_result.value)
+                
+                # Check again for duplicates
+                if self._is_duplicate_file(file_path, files):
+                    logger.warning(f"Still duplicate: {file_path}. Skipping this iteration.")
+                    continue
+            
             # Confirm the path
             confirm_result = self.ai.choice(
                 question=f"Confirm this file path is correct: {file_path}",
                 options=["YES - Correct", "NO - Try again"],
-                context=f"Intended file from plan: {result.value}"
+                context=f"Intended file from plan: {result.value}\nAlready selected: {selected_files}"
             )
             
             if "YES" in confirm_result.value:
@@ -162,15 +194,6 @@ Files collected so far: {[f['path'] for f in files]}"""
                     "operation": operation,
                     "reason": f"Part of plan to implement TODO task"
                 })
-                
-                # Update context for next iteration
-                context = f"""Action Plan:
-{plan}
-
-TODO excerpt:
-{todo_content[:500]}
-
-Files collected so far: {[f['path'] for f in files]}"""
                 
                 logger.info(f"Added file: {file_path} ({operation})")
             else:
@@ -208,12 +231,29 @@ Files collected so far: {[f['path'] for f in files]}"""
         
         return path
     
+    def _is_duplicate_file(self, file_path: str, existing_files: List[Dict]) -> bool:
+        """Check if file path is already in the list of selected files"""
+        existing_paths = [f['path'] for f in existing_files]
+        
+        # Check exact match
+        if file_path in existing_paths:
+            return True
+        
+        # Check normalized paths (remove leading/trailing slashes, case insensitive)
+        normalized_new = file_path.strip('/').lower()
+        for existing_path in existing_paths:
+            normalized_existing = existing_path.strip('/').lower()
+            if normalized_new == normalized_existing:
+                return True
+        
+        return False
+    
     def _determine_operation(self, file_path: str, plan: str) -> str:
-        """Determine if file should be created, modified, or deleted"""
+        """Determine if file should be edited or deleted"""
         result = self.ai.choice(
             question=f"What operation for {file_path}?",
-            options=["CREATE", "MODIFY", "DELETE"],
-            context=f"Based on plan: {plan[:500]}"
+            options=["EDIT", "DELETE"],
+            context=f"Based on plan: {plan[:500]}\n\nEDIT = Create new file or completely rewrite existing file\nDELETE = Remove the file"
         )
         
         return result.value

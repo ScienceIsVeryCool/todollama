@@ -31,9 +31,15 @@ class TodoExecutor:
             
             logger.info(f"Executing {operation} on {file_info['path']}")
             
-            if operation == 'CREATE':
-                content = self._generate_file_content(
+            if operation == 'EDIT':
+                # Check if file exists to provide context to AI
+                original_content = ""
+                if file_path.exists():
+                    original_content = file_path.read_text()
+                
+                content = self._edit_file_content(
                     file_info['path'],
+                    original_content,
                     action_plan['plan'],
                     action_plan['todo_excerpt']
                 )
@@ -41,20 +47,6 @@ class TodoExecutor:
                 file_path.write_text(content)
                 modified_files.append(file_info['path'])
                 
-            elif operation == 'MODIFY':
-                if file_path.exists():
-                    original = file_path.read_text()
-                    content = self._modify_file_content(
-                        file_info['path'],
-                        original,
-                        action_plan['plan'],
-                        action_plan['todo_excerpt']
-                    )
-                    file_path.write_text(content)
-                    modified_files.append(file_info['path'])
-                else:
-                    logger.warning(f"File to modify doesn't exist: {file_info['path']}")
-                    
             elif operation == 'DELETE':
                 if file_path.exists():
                     file_path.unlink()
@@ -64,9 +56,27 @@ class TodoExecutor:
         
         return modified_files
     
-    def _generate_file_content(self, file_path: str, plan: str, todo: str) -> str:
-        """Generate content for a new file"""
-        prompt = f"""Generate complete content for this new file: {file_path}
+    def _edit_file_content(self, file_path: str, original_content: str, plan: str, todo: str) -> str:
+        """Edit file content (create new or completely rewrite existing)"""
+        if original_content:
+            # File exists - edit it
+            prompt = f"""Completely edit this file according to the plan: {file_path}
+
+Current content (for reference):
+{original_content[:2000]}
+
+Plan excerpt:
+{plan[:1000]}
+
+TODO excerpt:
+{todo[:500]}
+
+Generate the COMPLETE new file content. Do not modify - completely rewrite.
+Wrap in appropriate markdown code blocks."""
+            context_name = "file_edit"
+        else:
+            # File doesn't exist - create new
+            prompt = f"""Create complete content for this new file: {file_path}
 
 Based on this plan:
 {plan[:1000]}
@@ -76,43 +86,12 @@ To help implement this TODO:
 
 Generate professional, working code with comments.
 Wrap the content in appropriate markdown code blocks."""
+            context_name = "file_creation"
         
         result = self.ai.open(
             prompt=prompt,
             context="",
-            context_name="file_generation"
-        )
-        
-        # Extract code from markdown blocks
-        content = result.content
-        if '```' in content:
-            import re
-            matches = re.findall(r'```[\w]*\n(.*?)\n```', content, re.DOTALL)
-            if matches:
-                content = matches[0]
-        
-        return content
-    
-    def _modify_file_content(self, file_path: str, original: str, plan: str, todo: str) -> str:
-        """Modify existing file content"""
-        prompt = f"""Modify this file according to the plan: {file_path}
-
-Current content:
-{original[:2000]}
-
-Plan excerpt:
-{plan[:1000]}
-
-TODO excerpt:
-{todo[:500]}
-
-Generate the COMPLETE modified file content.
-Wrap in appropriate markdown code blocks."""
-        
-        result = self.ai.open(
-            prompt=prompt,
-            context="",
-            context_name="file_modification"
+            context_name=context_name
         )
         
         # Extract code from markdown blocks
