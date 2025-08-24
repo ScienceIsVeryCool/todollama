@@ -85,7 +85,8 @@ class ContextTracker:
     
     def store_prompt_and_response(self, prompt: str, response: str, 
                                  template: Optional[str] = None,
-                                 variable_map: Optional[Dict[str, str]] = None):
+                                 variable_map: Optional[Dict[str, str]] = None,
+                                 query_type: Optional[str] = None):
         """Store a prompt with its response and variable mapping
         
         Args:
@@ -93,6 +94,7 @@ class ContextTracker:
             response: The AI's response
             template: Optional template showing where variables go
             variable_map: Optional explicit mapping of variables used
+            query_type: Optional query type (multiple_choice, single_word, open, file_write)
         """
         if not self.current_stage:
             self.start_stage("default")
@@ -112,7 +114,8 @@ class ContextTracker:
             "template": template,
             "variables_used": variable_map,
             "prompt_size": len(prompt),
-            "response_size": len(response)
+            "response_size": len(response),
+            "query_type": query_type
         }
         
         self.stages[self.current_stage]["prompt_response_pairs"].append(pair_data)
@@ -238,6 +241,13 @@ class ContextTracker:
             for s in self.stages.values()
         )
         
+        # Count by query type
+        query_type_counts = {}
+        for stage in self.stages.values():
+            for pair in stage.get("prompt_response_pairs", []):
+                query_type = pair.get("query_type", "unknown")
+                query_type_counts[query_type] = query_type_counts.get(query_type, 0) + 1
+        
         return {
             "num_stages": len(self.stages),
             "total_variables": total_vars,
@@ -245,7 +255,8 @@ class ContextTracker:
             "total_responses": total_responses,
             "total_pairs": total_pairs,
             "total_data_size": total_size,
-            "stages": list(self.stage_order)
+            "stages": list(self.stage_order),
+            "query_type_breakdown": query_type_counts
         }
     
     def export_for_report(self) -> Dict[str, Any]:

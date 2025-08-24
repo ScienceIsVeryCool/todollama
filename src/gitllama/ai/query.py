@@ -194,7 +194,8 @@ File content:"""
         variables_used[f"{context_name}_congress"] = congress_data
         
         context_tracker.store_prompt_and_response(
-            prompt=prompt, response=response, variable_map=variables_used
+            prompt=prompt, response=response, variable_map=variables_used,
+            query_type="multiple_choice"
         )
         
         # Store result
@@ -261,7 +262,8 @@ File content:"""
         variables_used[f"{context_name}_congress"] = congress_data
         
         context_tracker.store_prompt_and_response(
-            prompt=prompt, response=response, variable_map=variables_used
+            prompt=prompt, response=response, variable_map=variables_used,
+            query_type="single_word"
         )
         
         result = SingleWordResult(
@@ -325,7 +327,8 @@ File content:"""
         variables_used[f"{context_name}_congress"] = congress_data
         
         context_tracker.store_prompt_and_response(
-            prompt=full_prompt, response=response, variable_map=variables_used
+            prompt=full_prompt, response=response, variable_map=variables_used,
+            query_type="open"
         )
         
         result = OpenResult(
@@ -386,7 +389,8 @@ File content:"""
         variables_used[f"{context_name}_congress"] = congress_data
         
         context_tracker.store_prompt_and_response(
-            prompt=prompt, response=response, variable_map=variables_used
+            prompt=prompt, response=response, variable_map=variables_used,
+            query_type="file_write"
         )
         
         result = FileWriteResult(

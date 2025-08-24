@@ -321,6 +321,16 @@ class ReportGenerator:
         .stat-value { font-size: 1.8rem; font-weight: bold; color: #667eea; }
         .stat-label { color: #64748b; text-transform: uppercase; font-size: 0.8rem; }
         
+        /* Query type stat cards */
+        .query-type-stat-multiple_choice { border-left-color: #f59e0b; }
+        .query-type-stat-multiple_choice .stat-value { color: #f59e0b; }
+        .query-type-stat-single_word { border-left-color: #3b82f6; }
+        .query-type-stat-single_word .stat-value { color: #3b82f6; }
+        .query-type-stat-open { border-left-color: #22c55e; }
+        .query-type-stat-open .stat-value { color: #22c55e; }
+        .query-type-stat-file_write { border-left-color: #a855f7; }
+        .query-type-stat-file_write .stat-value { color: #a855f7; }
+        
         /* Stage navigation */
         .stage-nav {
             display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 2rem;
@@ -360,6 +370,26 @@ class ReportGenerator:
         }
         .pair-number {
             font-weight: 700; color: #1a202c; font-size: 1.1rem;
+            display: flex; align-items: center; gap: 0.75rem;
+        }
+        
+        /* Query Type Badges */
+        .query-type-badge {
+            font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.5rem;
+            border-radius: 12px; white-space: nowrap; text-transform: uppercase;
+            letter-spacing: 0.025em;
+        }
+        .query-type-multiple_choice {
+            background: #fef3c7; color: #92400e; border: 1px solid #f59e0b;
+        }
+        .query-type-single_word {
+            background: #dbeafe; color: #1d4ed8; border: 1px solid #3b82f6;
+        }
+        .query-type-open {
+            background: #dcfce7; color: #166534; border: 1px solid #22c55e;
+        }
+        .query-type-file_write {
+            background: #f3e8ff; color: #7c3aed; border: 1px solid #a855f7;
         }
         .pair-meta {
             display: flex; gap: 1rem; align-items: center;
@@ -623,6 +653,28 @@ class ReportGenerator:
                     <div class="stat-label">Status</div>
                 </div>
             </div>
+            
+            <!-- Query Type Breakdown -->
+            {% if context_tracking.stats.query_type_breakdown %}
+            <div style="margin-top: 1.5rem;">
+                <h3 style="color: #374151; font-size: 1.2rem; margin-bottom: 0.75rem;">📊 Query Type Breakdown</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem;">
+                    {% for query_type, count in context_tracking.stats.query_type_breakdown.items() %}
+                    <div class="stat-card query-type-stat-{{ query_type }}">
+                        <div class="stat-value">{{ count }}</div>
+                        <div class="stat-label">
+                            {% if query_type == 'multiple_choice' %}🔤 Multiple Choice
+                            {% elif query_type == 'single_word' %}📝 Single Word
+                            {% elif query_type == 'open' %}📰 Open Response
+                            {% elif query_type == 'file_write' %}📄 File Write
+                            {% else %}{{ query_type }}
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
         </div>
         
         <!-- Congress Summary (if available) -->
@@ -722,6 +774,16 @@ class ReportGenerator:
                     <div class="pair-header">
                         <div class="pair-number">
                             Exchange #{{ loop.index }}
+                            {% if pair.query_type %}
+                            <span class="query-type-badge query-type-{{ pair.query_type }}">
+                                {% if pair.query_type == 'multiple_choice' %}🔤 Multiple Choice
+                                {% elif pair.query_type == 'single_word' %}📝 Single Word
+                                {% elif pair.query_type == 'open' %}📰 Open Response
+                                {% elif pair.query_type == 'file_write' %}📄 File Write
+                                {% else %}{{ pair.query_type }}
+                                {% endif %}
+                            </span>
+                            {% endif %}
                             <!-- Congress Voting Inline -->
                             {% if congress_var %}
                             <div class="congress-inline">
