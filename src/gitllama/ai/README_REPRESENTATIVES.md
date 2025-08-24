@@ -1,10 +1,10 @@
-# Congressional Representatives Configuration
+# The Congressional Representatives System
 
-This file explains how to customize the congressional representatives for your specific use cases.
+This file explains the congressional representatives system for AI response evaluation.
 
 ## Overview
 
-The congressional system uses three AI representatives to evaluate and vote on AI responses. Each representative has their own personality, voting style, and **individual AI model**.
+The congressional system uses three AI representatives embodying fundamental aspects of humanity. Each votes based on their core values and personality, regardless of topic expertise - they represent human nature itself through three distinct perspectives: Logic, Creativity, and Compassion.
 
 ## Configuration File
 
@@ -12,73 +12,100 @@ Representatives are defined in `representatives.py` with the following structure
 
 ```python
 Representative(
-    name="Representative Name",
-    title="Their Role Title",
-    personality="Description of their personality and approach",
-    context_prompt="Instructions for how they should evaluate responses",
-    voting_style="conservative|progressive|balanced",
-    model="ollama-model-name"  # Individual model for this representative
+    name_title="Combined Name and Title",  # Single field for identity
+    personality="Core personality embodying an aspect of humanity", 
+    likes=["list", "of", "values", "they", "appreciate"],  # Values they support
+    dislikes=["list", "of", "things", "they", "oppose"],   # Things they reject
+    voting_style="analytical|progressive|humanistic",     # How they decide
+    model="ollama-model-name"  # Individual AI model
 )
 ```
 
-## Current Representatives
+## The Three Representatives (Current Configuration)
 
-### 1. Senator Prudence - The Conservative Guardian
+### 1. Caspar the Rational - The Logical Mind
 - **Model**: `gemma3:4b`
-- **Role**: Security and safety focused
-- **Voting**: Skeptical by nature, votes NO if there's any doubt
+- **Aspect**: Logic, reason, and analytical thinking
+- **Values**: evidence, consistency, methodology, precision, data, proof
+- **Opposes**: assumptions, speculation, bias, shortcuts, vagueness
+- **Voting**: Analytical - based on logical evaluation
 
-### 2. Representative Innovation - The Progressive Advocate  
-- **Model**: `gemma3:4b`
-- **Role**: Innovation and efficiency focused
-- **Voting**: Optimistic, votes YES if response shows promise
+### 2. Melchior the Visionary - The Creative Spirit
+- **Model**: `gemma3:4b` 
+- **Aspect**: Creativity, innovation, and progress
+- **Values**: innovation, boldness, experimentation, transformation, possibilities
+- **Opposes**: stagnation, conformity, rigid thinking, status quo, limitations
+- **Voting**: Progressive - embraces change and new ideas
 
-### 3. Justice Balance - The Neutral Arbiter
+### 3. Balthasar the Compassionate - The Human Heart
 - **Model**: `gemma3:4b`
-- **Role**: Balanced analysis of technical and practical aspects
-- **Voting**: Objective evaluation based on fulfilling intended purpose
+- **Aspect**: Wisdom, empathy, and moral judgment
+- **Values**: compassion, fairness, kindness, justice, human dignity, harmony
+- **Opposes**: cruelty, harm, exploitation, inequality, divisiveness
+- **Voting**: Humanistic - considers human impact and moral implications
+
+## The Templated Prompt System
+
+The system uses a templated approach where each representative's evaluation prompt is dynamically built from their personality and values:
+
+```python
+def build_context_prompt(representative: Representative) -> str:
+    """Build a templated context prompt for any representative"""
+    return f"""You are {representative.name_title}, a representative evaluating an AI response.
+
+Your personality: {representative.personality}
+
+You appreciate and value: {', '.join(representative.likes)}
+
+You dislike and oppose: {', '.join(representative.dislikes)}
+
+Your role is to vote YES or NO on whether the AI response is acceptable. 
+Base your decision on your values and personality, even if the topic is 
+outside your direct experience. Vote according to how you feel the response 
+aligns with what you value and oppose."""
+```
 
 ## Customizing Representatives
 
-### Individual Models
-Each representative can use a different AI model, allowing for specialized personalities:
+### Values-Based Customization
+The power of the Magi system lies in the extensive likes/dislikes lists:
 
 ```python
-# Example: Specialized models for different aspects
 Representative(
-    name="Security Expert",
-    model="llama3:8b",  # Great for security analysis
-    # ...
-),
-Representative(
-    name="Innovation Advocate", 
-    model="qwen2.5:7b",  # Excellent for creative solutions
-    # ...
-),
-Representative(
-    name="Architecture Reviewer",
-    model="gemma3:4b",  # Solid for balanced decisions
-    # ...
+    name_title="Custom Representative",
+    personality="Embodies specific aspect of humanity you want to represent",
+    likes=[
+        # Add values, concepts, approaches they should appreciate
+        "accuracy", "efficiency", "user-friendliness", "sustainability"
+    ],
+    dislikes=[
+        # Add things they should oppose or be skeptical of  
+        "waste", "complexity", "user-hostile design", "short-term thinking"
+    ],
+    voting_style="analytical",  # or progressive, humanistic
+    model="gemma3:4b"
 )
 ```
 
-### Personality Customization
-Tailor each representative's personality to your domain:
+### Individual Models
+Each representative can use different AI models for specialized reasoning:
 
 ```python
+# Example: Different models for different aspects
 Representative(
-    name="Dr. SecureCode",
-    title="The Security Auditor",
-    personality="Former cybersecurity consultant with 15 years experience. Extremely cautious about vulnerabilities, injection attacks, and data exposure.",
-    context_prompt="""You are Dr. SecureCode, a security-focused code reviewer.
-    Evaluate responses for:
-    - Security vulnerabilities (SQL injection, XSS, etc.)
-    - Data exposure risks
-    - Authentication/authorization issues
-    - Input validation problems
-    Vote NO if any security concerns exist.""",
-    voting_style="conservative",
-    model="llama3:8b"
+    name_title="Logic Engine Alpha",
+    model="llama3:8b",     # Strong analytical reasoning
+    # ...
+),
+Representative(
+    name_title="Creative Catalyst Beta", 
+    model="qwen2.5:7b",    # Innovative thinking
+    # ...
+),
+Representative(
+    name_title="Wisdom Arbiter Gamma",
+    model="gemma3:4b",     # Balanced judgment
+    # ...
 )
 ```
 

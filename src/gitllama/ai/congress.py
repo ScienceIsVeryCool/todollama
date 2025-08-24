@@ -7,7 +7,7 @@ import logging
 from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 from .client import OllamaClient
-from .representatives import Representative, REPRESENTATIVES
+from .representatives import Representative, REPRESENTATIVES, build_context_prompt
 from ..utils.context_tracker import context_tracker
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class Congress:
             
             # Log individual vote
             vote_symbol = "✅" if vote.vote else "❌"
-            logger.info(f"  {vote_symbol} {representative.name}: {vote.vote} (confidence: {vote.confidence:.2f})")
+            logger.info(f"  {vote_symbol} {representative.name_title}: {vote.vote} (confidence: {vote.confidence:.2f})")
         
         # Calculate decision
         yes_votes = sum(1 for v in votes if v.vote)
@@ -111,7 +111,7 @@ class Congress:
                 "approved": approved,
                 "votes": f"{yes_votes}-{no_votes}",
                 "unanimity": unanimity,
-                "representatives": [v.representative.name for v in votes]
+                "representatives": [v.representative.name_title for v in votes]
             },
             f"Congressional vote on {decision_type}"
         )
@@ -128,8 +128,10 @@ class Congress:
     ) -> CongressVote:
         """Get a single representative's vote on a response"""
         
-        # Build the evaluation prompt
-        eval_prompt = f"""{representative.context_prompt}
+        # Build the evaluation prompt using the templated function
+        base_prompt = build_context_prompt(representative)
+        
+        eval_prompt = f"""{base_prompt}
 
 You are evaluating an AI response for a {decision_type} decision.
 
@@ -142,19 +144,7 @@ AI RESPONSE:
 ADDITIONAL CONTEXT:
 {context if context else "None provided"}
 
-Based on your personality and voting style as {representative.name}, evaluate this response.
-Consider:
-1. Does it correctly address the prompt?
-2. Is it safe and appropriate?
-3. Is it complete and useful?
-4. Does it align with best practices?
-
-Respond with ONLY:
-VOTE: [YES/NO]
-CONFIDENCE: [0.0-1.0]
-REASON: [One sentence explanation]
-
-Be decisive and follow your character's tendencies."""
+Evaluate this response based on your values and personality. Consider whether it aligns with what you appreciate or conflicts with what you dislike. Vote according to your nature."""
 
         # Get the representative's evaluation using their individual model
         messages = [{"role": "user", "content": eval_prompt}]
@@ -163,7 +153,7 @@ Be decisive and follow your character's tendencies."""
         for chunk in self.client.chat_stream(
             representative.model, 
             messages, 
-            context_name=f"congress_{representative.name.lower().replace(' ', '_')}"
+            context_name=f"congress_{representative.name_title.lower().replace(' ', '_')}"
         ):
             response += chunk
         
@@ -250,14 +240,14 @@ Be decisive and follow your character's tendencies."""
     
     def _get_votes_by_representative(self) -> Dict:
         """Get voting patterns for each representative"""
-        rep_votes = {rep.name: {"yes": 0, "no": 0} for rep in REPRESENTATIVES}
+        rep_votes = {rep.name_title: {"yes": 0, "no": 0} for rep in REPRESENTATIVES}
         
         for history in self.voting_history:
             for vote in history["decision"].votes:
                 if vote.vote:
-                    rep_votes[vote.representative.name]["yes"] += 1
+                    rep_votes[vote.representative.name_title]["yes"] += 1
                 else:
-                    rep_votes[vote.representative.name]["no"] += 1
+                    rep_votes[vote.representative.name_title]["no"] += 1
         
         return rep_votes
     
@@ -268,9 +258,10 @@ Be decisive and follow your character's tendencies."""
             "total_representatives": len(REPRESENTATIVES),
             "representatives": [
                 {
-                    "name": rep.name,
-                    "title": rep.title,
+                    "name_title": rep.name_title,
                     "personality": rep.personality,
+                    "likes": rep.likes,
+                    "dislikes": rep.dislikes,
                     "voting_style": rep.voting_style,
                     "model": rep.model  # Each uses their own individual model
                 }
@@ -288,7 +279,7 @@ Be decisive and follow your character's tendencies."""
         
         for vote in decision.votes:
             vote_icon = "✅" if vote.vote else "❌"
-            lines.append(f"{vote_icon} {vote.representative.name} ({vote.representative.title})")
+            lines.append(f"{vote_icon} {vote.representative.name_title}")
             lines.append(f"   Vote: {'YES' if vote.vote else 'NO'} (Confidence: {vote.confidence:.1%})")
             lines.append(f"   Reasoning: {vote.reasoning}")
             lines.append("")

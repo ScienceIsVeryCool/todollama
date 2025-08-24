@@ -155,15 +155,21 @@ This feature ensures GitLlama can work with repositories of any size without man
 
 ## Congressional Oversight System 🏛️
 
-GitLlama includes a novel Congressional voting system that provides governance and validation of AI decisions:
+GitLlama includes a sophisticated Congressional voting system that provides governance and validation of AI decisions through three Representatives embodying fundamental aspects of humanity:
+
+### The Three Representatives
+
+Each Representative embodies a core aspect of human nature and decision-making:
+
+- **Caspar the Rational**: Embodies logic, reason, and analytical thinking - values evidence, consistency, and systematic approaches
+- **Melchior the Visionary**: Embodies creativity, innovation, and progress - values bold ideas, transformation, and breakthrough thinking  
+- **Balthasar the Compassionate**: Embodies wisdom, empathy, and moral judgment - values fairness, kindness, and human dignity
 
 ### How It Works
 
-Every AI response is evaluated by three virtual Representatives with distinct personalities:
-
-- **Senator Prudence (Conservative)**: Risk-averse, prioritizes accuracy and safety
-- **Representative Innovation (Progressive)**: Forward-thinking, values practical solutions
-- **Justice Balance (Neutral)**: Analytical, weighs pros and cons objectively
+- **Values-Based Evaluation**: Representatives vote based on their core values and personality traits, regardless of topic expertise
+- **Individual AI Models**: Each Representative can use different AI models optimized for their reasoning style
+- **Templated Prompts**: Dynamic prompt generation based on each Representative's likes, dislikes, and personality
 
 ### Features
 

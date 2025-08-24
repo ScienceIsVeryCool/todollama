@@ -479,10 +479,10 @@ File content:"""
             "approved": congress_decision.approved,
             "votes": f"{congress_decision.vote_count[0]}-{congress_decision.vote_count[1]}",
             "unanimous": congress_decision.unanimity,
-            "representatives": [v.representative.name for v in congress_decision.votes],
+            "representatives": [v.representative.name_title for v in congress_decision.votes],
             "vote_details": [{
-                "name": v.representative.name,
-                "title": v.representative.title,
+                "name": v.representative.name_title,
+                "title": v.representative.name_title,  # Keep same for backward compatibility
                 "vote": v.vote,
                 "confidence": v.confidence,
                 "reasoning": v.reasoning

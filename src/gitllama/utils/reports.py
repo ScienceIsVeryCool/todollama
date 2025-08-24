@@ -848,12 +848,31 @@ class ReportGenerator:
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1rem;">
                     {% for rep in metrics.congress_info.representatives %}
                     <div style="background: #f8fafc; padding: 1.5rem; border-radius: 8px; border-left: 4px solid #667eea;">
-                        <div style="font-weight: 700; color: #374151; font-size: 1.1rem; margin-bottom: 0.5rem;">{{ rep.name }}</div>
-                        <div style="font-style: italic; color: #6366f1; margin-bottom: 0.75rem;">{{ rep.title }}</div>
+                        <div style="font-weight: 700; color: #374151; font-size: 1.1rem; margin-bottom: 0.75rem;">{{ rep.name_title }}</div>
+                        
                         <div style="background: white; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
                             <div style="font-size: 0.85rem; color: #4b5563; margin-bottom: 0.5rem;"><strong>Personality:</strong></div>
                             <div style="font-size: 0.9rem; color: #374151; line-height: 1.4;">{{ rep.personality }}</div>
                         </div>
+                        
+                        <div style="background: #f0f9ff; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
+                            <div style="font-size: 0.85rem; color: #0369a1; margin-bottom: 0.5rem;"><strong>Values & Appreciates:</strong></div>
+                            <div style="font-size: 0.8rem; color: #0c4a6e;">
+                                {% for like in rep.likes %}
+                                <span style="background: #dbeafe; padding: 0.2rem 0.4rem; border-radius: 3px; margin: 0.1rem; display: inline-block;">{{ like }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        
+                        <div style="background: #fef2f2; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
+                            <div style="font-size: 0.85rem; color: #dc2626; margin-bottom: 0.5rem;"><strong>Dislikes & Opposes:</strong></div>
+                            <div style="font-size: 0.8rem; color: #7f1d1d;">
+                                {% for dislike in rep.dislikes %}
+                                <span style="background: #fee2e2; padding: 0.2rem 0.4rem; border-radius: 3px; margin: 0.1rem; display: inline-block;">{{ dislike }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
                             <span style="color: #6b7280;"><strong>Voting Style:</strong> {{ rep.voting_style }}</span>
                             <span style="background: #e0e7ff; padding: 0.25rem 0.5rem; border-radius: 4px; color: #3730a3; font-weight: 600;">{{ rep.model }}</span>
