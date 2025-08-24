@@ -7,20 +7,10 @@ import logging
 from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 from .client import OllamaClient
+from .representatives import Representative, REPRESENTATIVES
 from ..utils.context_tracker import context_tracker
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class Representative:
-    """A Representative with a unique personality for voting"""
-    name: str
-    title: str
-    personality: str
-    context_prompt: str
-    voting_style: str
-    model: str  # Individual model for this representative
 
 
 @dataclass
@@ -44,49 +34,12 @@ class CongressDecision:
 class Congress:
     """Congressional voting system for AI response validation"""
     
-    # Define the three Representatives with distinct personalities and individual models
-    REPRESENTATIVES = [
-        Representative(
-            name="Senator Prudence",
-            title="The Conservative Guardian",
-            personality="Cautious, methodical, and risk-averse. Values accuracy, safety, and thoroughness above all else.",
-            context_prompt="""You are Senator Prudence, a conservative and careful evaluator. 
-            You prioritize accuracy, safety, and completeness in all AI responses. 
-            You are skeptical by nature and require high standards of proof.
-            You vote NO if there's any doubt about correctness or safety.""",
-            voting_style="conservative",
-            model="gemma3:4b"  # Conservative uses reliable Llama model
-        ),
-        Representative(
-            name="Representative Innovation",
-            title="The Progressive Advocate", 
-            personality="Forward-thinking, creative, and optimistic. Values innovation, efficiency, and practical solutions.",
-            context_prompt="""You are Representative Innovation, a progressive and optimistic evaluator.
-            You appreciate creative solutions and practical approaches.
-            You focus on whether the response moves things forward and solves the problem.
-            You vote YES if the response shows promise and addresses the core need.""",
-            voting_style="progressive",
-            model="gemma3:4b"  # Progressive uses innovative Qwen model
-        ),
-        Representative(
-            name="Justice Balance",
-            title="The Neutral Arbiter",
-            personality="Balanced, analytical, and fair. Weighs all factors objectively and seeks consensus.",
-            context_prompt="""You are Justice Balance, a neutral and analytical evaluator.
-            You consider both technical correctness and practical utility.
-            You weigh pros and cons objectively without bias.
-            You vote based on whether the response adequately fulfills its intended purpose.""",
-            voting_style="balanced",
-            model="gemma3:4b"  # Balanced uses stable Gemma model
-        )
-    ]
-    
     def __init__(self, client: OllamaClient, model: str = "gemma3:4b"):
         """Initialize the Congress with an AI client"""
         self.client = client
         # The fallback model is ignored since each representative has their own model
         self.voting_history = []
-        models_used = [rep.model for rep in self.REPRESENTATIVES]
+        models_used = [rep.model for rep in REPRESENTATIVES]
         logger.info(f"🏛️ Congress initialized with individual models: {models_used} (requested fallback: {model})")
     
     def evaluate_response(
@@ -112,7 +65,7 @@ class Congress:
         
         logger.info(f"🏛️ Congress convening to evaluate {decision_type} response")
         
-        for representative in self.REPRESENTATIVES:
+        for representative in REPRESENTATIVES:
             vote = self._get_representative_vote(
                 representative,
                 original_prompt,
@@ -297,7 +250,7 @@ Be decisive and follow your character's tendencies."""
     
     def _get_votes_by_representative(self) -> Dict:
         """Get voting patterns for each representative"""
-        rep_votes = {rep.name: {"yes": 0, "no": 0} for rep in self.REPRESENTATIVES}
+        rep_votes = {rep.name: {"yes": 0, "no": 0} for rep in REPRESENTATIVES}
         
         for history in self.voting_history:
             for vote in history["decision"].votes:
@@ -311,8 +264,8 @@ Be decisive and follow your character's tendencies."""
     def get_congress_info(self) -> Dict[str, Any]:
         """Get detailed congress information including models for each representative"""
         return {
-            "models": [rep.model for rep in self.REPRESENTATIVES],
-            "total_representatives": len(self.REPRESENTATIVES),
+            "models": [rep.model for rep in REPRESENTATIVES],
+            "total_representatives": len(REPRESENTATIVES),
             "representatives": [
                 {
                     "name": rep.name,
@@ -321,7 +274,7 @@ Be decisive and follow your character's tendencies."""
                     "voting_style": rep.voting_style,
                     "model": rep.model  # Each uses their own individual model
                 }
-                for rep in self.REPRESENTATIVES
+                for rep in REPRESENTATIVES
             ],
             "voting_summary": self.get_voting_summary()
         }

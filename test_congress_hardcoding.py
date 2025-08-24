@@ -16,6 +16,7 @@ def test_congress_individual_models():
     
     try:
         from gitllama.ai.congress import Congress
+        from gitllama.ai.representatives import REPRESENTATIVES
         from gitllama.ai.client import OllamaClient
         
         # Mock client (we don't need real client for this test)
@@ -41,7 +42,7 @@ def test_congress_individual_models():
             congress = Congress(mock_client, fallback_model)
             
             # Check that each representative has their expected individual model
-            for rep in congress.REPRESENTATIVES:
+            for rep in REPRESENTATIVES:
                 expected = expected_models[rep.name]
                 actual = rep.model
                 status = "✅" if actual == expected else "❌"
