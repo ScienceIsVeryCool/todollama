@@ -12,15 +12,14 @@ from typing import Dict, List, Any, Optional
 from ..utils.context_tracker import context_tracker
 from .. import __version__
 
+logger = logging.getLogger(__name__)
+
 try:
     from jinja2 import Template
     REPORT_DEPENDENCIES_AVAILABLE = True
 except ImportError as e:
     REPORT_DEPENDENCIES_AVAILABLE = False
-    logger = logging.getLogger(__name__)
     logger.warning(f"Report generation dependencies not available: {e}")
-
-logger = logging.getLogger(__name__)
 
 
 class ReportGenerator:
@@ -36,7 +35,6 @@ class ReportGenerator:
         self.executive_summary = {}
         self.file_operations = []
         self.metrics = {}
-        self.congress_votes = []  # Track all Congress votes
         
         # Create output directory
         self.output_dir.mkdir(exist_ok=True)
@@ -68,10 +66,69 @@ class ReportGenerator:
             "total_tokens": total_tokens
         }
     
-    def add_congress_vote(self, vote_data: Dict):
-        """Add a Congress vote to the report"""
-        self.congress_votes.append(vote_data)
-        logger.debug(f"Added Congress vote: {vote_data.get('approved', 'unknown')}")
+    def _extract_congress_summary(self, context_data: Dict) -> Optional[Dict]:
+        """Extract Congress voting summary from context tracking data"""
+        congress_decisions = []
+        
+        # Look through all stages for congress data
+        for stage in context_data.get('stages', []):
+            # Check variables for congress data
+            for var_name, var_data in stage.get('variables', {}).items():
+                if 'congress' in var_name.lower():
+                    try:
+                        # Parse the congress data (it might be JSON string)
+                        content = var_data.get('content', '')
+                        if isinstance(content, str) and content.startswith('{'):
+                            import json
+                            congress_data = json.loads(content)
+                        else:
+                            congress_data = var_data.get('content', {})
+                        
+                        if isinstance(congress_data, dict) and congress_data.get('vote_details'):
+                            congress_decisions.append(congress_data)
+                    except Exception as e:
+                        logger.debug(f"Could not parse congress data from {var_name}: {e}")
+                        continue
+            
+            # Also check in prompt-response pairs for inline congress data
+            for pair in stage.get('prompt_response_pairs', []):
+                variables_used = pair.get('variables_used', {})
+                for var_name, var_content in variables_used.items():
+                    if 'congress' in var_name.lower() and isinstance(var_content, dict):
+                        if var_content.get('vote_details'):
+                            congress_decisions.append(var_content)
+        
+        if not congress_decisions:
+            return None
+        
+        # Aggregate the congress data
+        total_votes = len(congress_decisions)
+        approved = sum(1 for d in congress_decisions if d.get('approved'))
+        rejected = total_votes - approved
+        unanimous_decisions = sum(1 for d in congress_decisions if d.get('unanimous'))
+        unanimity_rate = unanimous_decisions / total_votes if total_votes > 0 else 0
+        
+        # Aggregate by representative
+        rep_votes = {}
+        for decision in congress_decisions:
+            vote_details = decision.get('vote_details', [])
+            for vote in vote_details:
+                rep_name = vote.get('name', 'Unknown')
+                if rep_name not in rep_votes:
+                    rep_votes[rep_name] = {'yes': 0, 'no': 0}
+                
+                if vote.get('vote'):
+                    rep_votes[rep_name]['yes'] += 1
+                else:
+                    rep_votes[rep_name]['no'] += 1
+        
+        return {
+            "total_votes": total_votes,
+            "approved": approved,
+            "rejected": rejected,
+            "unanimity_rate": unanimity_rate,
+            "by_representative": rep_votes
+        }
     
     def _generate_color_for_variable(self, var_name: str) -> str:
         """Generate a consistent color for a variable name"""
@@ -110,10 +167,11 @@ class ReportGenerator:
         replacements = []
         
         # Sort variables by length (longest first) to avoid partial replacements
-        sorted_vars = sorted(variables.items(), key=lambda x: len(x[1]) if x[1] else 0, reverse=True)
+        sorted_vars = sorted(variables.items(), key=lambda x: len(str(x[1])) if x[1] else 0, reverse=True)
         
         for var_name, var_content in sorted_vars:
-            if var_content and var_content in prompt:
+            # Only process string variables that might be in the prompt
+            if var_content and isinstance(var_content, str) and var_content in prompt:
                 color = self._generate_color_for_variable(var_name)
                 # Create a unique placeholder to avoid re-replacement
                 placeholder = f"___VAR_{var_name}_{hash(var_content)}___"
@@ -167,27 +225,8 @@ class ReportGenerator:
         # Get all tracked context data
         context_data = context_tracker.export_for_report()
         
-        # Try to get Congress summary if available
-        congress_summary = None
-        try:
-            # Check if any Congress data exists in context variables
-            for stage in context_data.get('stages', []):
-                for var_name in stage.get('variables', {}):
-                    if 'congress' in var_name:
-                        # Congress is being used, get summary
-                        from ..ai.query import AIQuery
-                        from ..ai.client import OllamaClient
-                        # Note: This is just for report, actual summary would come from the running instance
-                        congress_summary = {
-                            "total_votes": len(self.congress_votes),
-                            "approved": sum(1 for v in self.congress_votes if v.get('approved')),
-                            "rejected": sum(1 for v in self.congress_votes if not v.get('approved')),
-                            "unanimity_rate": 0.0,
-                            "by_representative": {}
-                        }
-                        break
-        except:
-            pass
+        # Extract Congress summary from stored context data
+        congress_summary = self._extract_congress_summary(context_data)
         
         # Prepare template data
         template_data = {
@@ -325,6 +364,50 @@ class ReportGenerator:
         .pair-meta {
             display: flex; gap: 1rem; align-items: center;
             font-size: 0.9rem; color: #64748b;
+        }
+        
+        /* Congress vote in metrics bar */
+        .congress-vote-summary {
+            position: relative; cursor: help;
+            padding: 0.25rem 0.5rem; border-radius: 4px;
+            background: rgba(251, 191, 36, 0.1);
+        }
+        .vote-result.approved { color: #22c55e; font-weight: 600; }
+        .vote-result.rejected { color: #ef4444; font-weight: 600; }
+        .vote-details-tooltip {
+            position: absolute; top: -10px; left: 50%;
+            transform: translateX(-50%) translateY(-100%);
+            background: #374151; color: white; padding: 1rem;
+            border-radius: 8px; font-size: 0.85rem; white-space: nowrap;
+            z-index: 1000; opacity: 0; visibility: hidden; 
+            transition: opacity 0.2s, visibility 0.2s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            min-width: 240px; white-space: normal;
+        }
+        .congress-vote-summary:hover .vote-details-tooltip {
+            opacity: 1; visibility: visible;
+        }
+        .vote-details-tooltip::after {
+            content: ''; position: absolute; top: 100%; left: 50%;
+            transform: translateX(-50%); border: 8px solid transparent;
+            border-top-color: #374151;
+        }
+        .vote-line {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.5rem; padding: 0.25rem 0;
+        }
+        .rep-name { font-weight: 500; }
+        .vote-symbol-small {
+            display: inline-block; width: 16px; height: 16px;
+            border-radius: 50%; text-align: center; line-height: 16px;
+            font-size: 0.7rem; font-weight: bold; margin: 0 0.5rem;
+        }
+        .vote-symbol-small.vote-yes { background: #22c55e; color: white; }
+        .vote-symbol-small.vote-no { background: #ef4444; color: white; }
+        .confidence { color: #9ca3af; font-size: 0.8rem; }
+        .verdict { 
+            margin-top: 0.75rem; padding-top: 0.5rem; 
+            border-top: 1px solid #4b5563; text-align: center; 
         }
         
         /* Variable legend */
@@ -627,44 +710,68 @@ class ReportGenerator:
                 
                 <!-- Prompt-Response Pairs -->
                 {% for pair in stage.prompt_response_pairs %}
+                <!-- Find Congress variable for this pair -->
+                {% set ns = namespace(congress_var=None) %}
+                {% for var_name, var_data in pair.variables_used.items() %}
+                    {% if var_name.endswith('_congress') and var_data.get('vote_details') and ns.congress_var is none %}
+                        {% set ns.congress_var = var_data %}
+                    {% endif %}
+                {% endfor %}
+                {% set congress_var = ns.congress_var %}
                 <div class="prompt-response-pair">
                     <div class="pair-header">
                         <div class="pair-number">
                             Exchange #{{ loop.index }}
                             <!-- Congress Voting Inline -->
-                            {% set congress_var = None %}
-                            {% for var_name, var_data in pair.variables_used.items() %}
-                                {% if var_name.endswith('_congress') and var_data.vote_details and not congress_var %}
-                                    {% set congress_var = var_data %}
-                                {% endif %}
-                            {% endfor %}
                             {% if congress_var %}
                             <div class="congress-inline">
                                 <span>🏛️</span>
                                 <div class="congress-votes-inline">
-                                    {% for vote_detail in congress_var.vote_details %}
-                                    <div class="vote-symbol {% if vote_detail.vote %}vote-yes{% else %}vote-no{% endif %}">
-                                        {% if vote_detail.vote %}✓{% else %}✗{% endif %}
+                                    {% for vote_detail in congress_var.get('vote_details', []) %}
+                                    <div class="vote-symbol {% if vote_detail.get('vote') %}vote-yes{% else %}vote-no{% endif %}">
+                                        {% if vote_detail.get('vote') %}✓{% else %}✗{% endif %}
                                         <div class="vote-tooltip">
-                                            <strong>{{ vote_detail.name }}</strong><br>
-                                            {{ vote_detail.title }}<br><br>
-                                            <strong>Vote:</strong> {% if vote_detail.vote %}YES{% else %}NO{% endif %}<br>
-                                            <strong>Confidence:</strong> {{ (vote_detail.confidence * 100)|round }}%<br>
-                                            <strong>Reasoning:</strong> {{ vote_detail.reasoning }}
+                                            <strong>{{ vote_detail.get('name', 'Unknown') }}</strong><br>
+                                            {{ vote_detail.get('title', 'Representative') }}<br><br>
+                                            <strong>Vote:</strong> {% if vote_detail.get('vote') %}YES{% else %}NO{% endif %}<br>
+                                            <strong>Confidence:</strong> {{ (vote_detail.get('confidence', 0) * 100)|round }}%<br>
+                                            <strong>Reasoning:</strong> {{ vote_detail.get('reasoning', 'No reason provided') }}
                                         </div>
                                     </div>
                                     {% endfor %}
                                 </div>
-                                <span class="congress-verdict-inline {% if congress_var.approved %}verdict-approved{% else %}verdict-rejected{% endif %}">
-                                    {{ congress_var.votes }}
+                                <span class="congress-verdict-inline {% if congress_var.get('approved') %}verdict-approved{% else %}verdict-rejected{% endif %}">
+                                    {{ congress_var.get('votes', '0-0') }}
                                 </span>
                             </div>
                             {% endif %}
                         </div>
                         <div class="pair-meta">
-                            <span>⏱️ {{ pair.timestamp.split('T')[1].split('.')[0] }}</span>
+                            <span>⏱️ {% if pair.timestamp %}{{ pair.timestamp.split('T')[1].split('.')[0] if 'T' in pair.timestamp else pair.timestamp }}{% else %}--:--:--{% endif %}</span>
                             <span>📝 {{ pair.prompt_size }} chars prompt</span>
                             <span>💬 {{ pair.response_size }} chars response</span>
+                            {% if congress_var %}
+                            <span class="congress-vote-summary" title="Congressional Vote Results">
+                                🏛️ <span class="vote-result {% if congress_var.get('approved') %}approved{% else %}rejected{% endif %}">
+                                    {{ congress_var.get('votes', '0-0') }}
+                                </span>
+                                <div class="vote-details-tooltip">
+                                    <strong>Congressional Votes:</strong><br>
+                                    {% for vote_detail in congress_var.get('vote_details', []) %}
+                                    <div class="vote-line">
+                                        <span class="rep-name">{{ vote_detail.get('name', 'Unknown') }}:</span>
+                                        <span class="vote-symbol-small {% if vote_detail.get('vote') %}vote-yes{% else %}vote-no{% endif %}">
+                                            {% if vote_detail.get('vote') %}✓{% else %}✗{% endif %}
+                                        </span>
+                                        <span class="confidence">({{ (vote_detail.get('confidence', 0) * 100)|round }}%)</span>
+                                    </div>
+                                    {% endfor %}
+                                    <div class="verdict">
+                                        <strong>Result: {% if congress_var.get('approved') %}APPROVED{% else %}REJECTED{% endif %}</strong>
+                                    </div>
+                                </div>
+                            </span>
+                            {% endif %}
                         </div>
                     </div>
                     

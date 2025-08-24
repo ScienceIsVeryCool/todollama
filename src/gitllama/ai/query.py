@@ -134,13 +134,6 @@ class AIQuery:
         for chunk in self.client.chat_stream(self.model, messages, context_name=context_name):
             response += chunk
         
-        # Store the prompt-response pair with variables
-        context_tracker.store_prompt_and_response(
-            prompt=prompt,
-            response=response,
-            variable_map=variables_used
-        )
-        
         # Parse the choice
         index, confidence = self.parser.parse_choice(response, options)
         
@@ -152,22 +145,34 @@ class AIQuery:
             decision_type="choice"
         )
         
-        # Log Congress decision in context tracker
+        # Add Congress data to variables_used so it's included in the pair
+        congress_data = {
+            "approved": congress_decision.approved,
+            "votes": f"{congress_decision.vote_count[0]}-{congress_decision.vote_count[1]}",
+            "unanimous": congress_decision.unanimity,
+            "representatives": [v.representative.name for v in congress_decision.votes],
+            "vote_details": [{
+                "name": v.representative.name,
+                "title": v.representative.title,
+                "vote": v.vote,
+                "confidence": v.confidence,
+                "reasoning": v.reasoning
+            } for v in congress_decision.votes]
+        }
+        variables_used[f"{context_name}_congress"] = congress_data
+        
+        
+        # Store the prompt-response pair with variables (now including Congress data)
+        context_tracker.store_prompt_and_response(
+            prompt=prompt,
+            response=response,
+            variable_map=variables_used
+        )
+        
+        # Also store Congress decision as separate variable for backward compatibility
         context_tracker.store_variable(
             f"{context_name}_congress",
-            {
-                "approved": congress_decision.approved,
-                "votes": f"{congress_decision.vote_count[0]}-{congress_decision.vote_count[1]}",
-                "unanimous": congress_decision.unanimity,
-                "representatives": [v.representative.name for v in congress_decision.votes],
-                "vote_details": [{
-                    "name": v.representative.name,
-                    "title": v.representative.title,
-                    "vote": v.vote,
-                    "confidence": v.confidence,
-                    "reasoning": v.reasoning
-                } for v in congress_decision.votes]
-            },
+            congress_data,
             "Congressional evaluation of choice"
         )
         
@@ -265,15 +270,40 @@ class AIQuery:
         for chunk in self.client.chat_stream(self.model, messages, context_name=context_name):
             response += chunk
         
-        # Store the prompt-response pair with variables
+        # Clean the response
+        content = self.parser.clean_text(response)
+        
+        # Get Congress evaluation
+        congress_decision = self.congress.evaluate_response(
+            original_prompt=full_prompt,
+            ai_response=response,
+            context=context,
+            decision_type="open"
+        )
+        
+        # Add Congress data to variables_used so it's included in the pair
+        congress_data = {
+            "approved": congress_decision.approved,
+            "votes": f"{congress_decision.vote_count[0]}-{congress_decision.vote_count[1]}",
+            "unanimous": congress_decision.unanimity,
+            "representatives": [v.representative.name for v in congress_decision.votes],
+            "vote_details": [{
+                "name": v.representative.name,
+                "title": v.representative.title,
+                "vote": v.vote,
+                "confidence": v.confidence,
+                "reasoning": v.reasoning
+            } for v in congress_decision.votes]
+        }
+        variables_used[f"{context_name}_congress"] = congress_data
+        
+        
+        # Store the prompt-response pair with variables (now including Congress data)
         context_tracker.store_prompt_and_response(
             prompt=full_prompt,
             response=response,
             variable_map=variables_used
         )
-        
-        # Clean the response
-        content = self.parser.clean_text(response)
         
         # Track the cleaned content
         context_tracker.store_variable(
@@ -282,30 +312,10 @@ class AIQuery:
             "Cleaned response content"
         )
         
-        # Get Congress evaluation
-        congress_decision = self.congress.evaluate_response(
-            original_prompt=prompt,
-            ai_response=response,
-            context=context,
-            decision_type="open"
-        )
-        
-        # Log Congress decision in context tracker
+        # Also store Congress decision as separate variable for backward compatibility
         context_tracker.store_variable(
             f"{context_name}_congress",
-            {
-                "approved": congress_decision.approved,
-                "votes": f"{congress_decision.vote_count[0]}-{congress_decision.vote_count[1]}",
-                "unanimous": congress_decision.unanimity,
-                "representatives": [v.representative.name for v in congress_decision.votes],
-                "vote_details": [{
-                    "name": v.representative.name,
-                    "title": v.representative.title,
-                    "vote": v.vote,
-                    "confidence": v.confidence,
-                    "reasoning": v.reasoning
-                } for v in congress_decision.votes]
-            },
+            congress_data,
             "Congressional evaluation of open response"
         )
         

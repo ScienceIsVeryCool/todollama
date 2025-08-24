@@ -136,16 +136,18 @@ class ContextTracker:
         """Try to extract a template from a prompt by identifying variable content
         
         Returns:
-            Tuple of (template_with_placeholders, detected_variables)
+            Tuple of (template_with_placeholders, all_variables)
         """
         template = prompt
-        detected_vars = {}
+        # Start with ALL variables - don't filter them out
+        detected_vars = variables.copy()
         
         # Sort variables by length (longest first) to avoid partial replacements
-        sorted_vars = sorted(variables.items(), key=lambda x: len(x[1]), reverse=True)
+        sorted_vars = sorted(variables.items(), key=lambda x: len(str(x[1])), reverse=True)
         
         for var_name, var_content in sorted_vars:
-            if var_content and len(var_content) > 10:  # Only match substantial content
+            # Only try to replace string content that might be in the prompt
+            if var_content and isinstance(var_content, str) and len(var_content) > 10:
                 # Escape special regex characters
                 escaped_content = re.escape(var_content[:500])  # Limit to first 500 chars for matching
                 
@@ -153,8 +155,8 @@ class ContextTracker:
                 if escaped_content[:100] in re.escape(prompt):
                     # Replace with placeholder
                     template = template.replace(var_content, f"{{{{ {var_name} }}}}")
-                    detected_vars[var_name] = var_content
         
+        # Return template and ALL variables (not just ones found in prompt)
         return template, detected_vars
     
     def store_prompt(self, prompt: str, context: str = "", question: str = ""):

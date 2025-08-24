@@ -135,6 +135,36 @@ When the AI context window is too large, GitLlama automatically:
 
 This feature ensures GitLlama can work with repositories of any size without manual context management.
 
+## Congressional Oversight System 🏛️
+
+GitLlama includes a novel Congressional voting system that provides governance and validation of AI decisions:
+
+### How It Works
+
+Every AI response is evaluated by three virtual Representatives with distinct personalities:
+
+- **Senator Prudence (Conservative)**: Risk-averse, prioritizes accuracy and safety
+- **Representative Innovation (Progressive)**: Forward-thinking, values practical solutions
+- **Justice Balance (Neutral)**: Analytical, weighs pros and cons objectively
+
+### Features
+
+- **Automatic Evaluation**: All AI responses get Congressional review
+- **Majority Voting**: Decisions require majority approval (2 out of 3 votes)
+- **Detailed Reasoning**: Each Representative provides confidence scores and reasoning
+- **Full Transparency**: All votes and reasoning included in HTML reports
+- **Interactive Reports**: Hover over vote symbols to see detailed Representative feedback
+
+### In Reports
+
+Congressional votes appear inline with AI exchanges:
+- 🏛️ Congressional icon shows voting occurred
+- ✓/✗ symbols show individual Representative votes
+- Hover tooltips reveal detailed reasoning and confidence scores
+- Summary section shows overall voting patterns by Representative
+
+This system ensures AI decisions undergo democratic review, adding a layer of validation and transparency to the automation process.
+
 ## Architecture
 
 ```
@@ -146,6 +176,7 @@ gitllama/
 ├── ai/
 │   ├── client.py         # Ollama API client
 │   ├── query.py          # Multiple choice / open response interface
+│   ├── congress.py       # Congressional voting system for AI validation
 │   ├── context_compressor.py # Automatic context compression
 │   └── parser.py         # Response parsing and code extraction
 ├── analyzers/
@@ -155,13 +186,16 @@ gitllama/
 │   └── file.py           # File modification workflow
 └── utils/
     ├── metrics.py        # Metrics collection and tracking
+    ├── context_tracker.py # Context and variable tracking for reports
     └── reports.py        # HTML report generation
 ```
 
 ### Key Components:
 
 - **AIQuery**: Dual interface for structured choices and open responses with automatic compression
+- **Congress**: Congressional voting system with three Representatives for AI validation
 - **ContextCompressor**: Intelligent context compression for large codebases
+- **ContextTracker**: Tracks all variables and prompt-response pairs for detailed reports
 - **MetricsCollector**: Tracks AI calls, compressions, and performance metrics
 - **ProjectAnalyzer**: Hierarchical analysis of repository structure
 - **BranchAnalyzer**: Branch selection using multiple choice decisions
@@ -171,13 +205,15 @@ gitllama/
 ## Reports
 
 GitLlama generates HTML reports with:
-- Timeline of AI decisions
+- Timeline of AI decisions with color-coded variable highlighting
+- Congressional voting results with interactive tooltips
 - Branch selection rationale
-- File modification details
+- File modification details  
 - API usage statistics
 - Context window tracking
 - Compression events and metrics
 - Performance analytics
+- Representative voting patterns and unanimity rates
 
 Reports are saved to `gitllama_reports/` directory.
 
