@@ -560,3 +560,7 @@ File content:"""
     def get_congress_summary(self) -> Dict:
         """Get summary of all Congressional votes"""
         return self.congress.get_voting_summary()
+    
+    def get_congress_info(self) -> Dict:
+        """Get detailed congress information including models for each representative"""
+        return self.congress.get_congress_info()

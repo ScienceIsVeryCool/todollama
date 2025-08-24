@@ -83,6 +83,10 @@ class ReportGenerator:
             "total_tokens": total_tokens
         }
     
+    def set_congress_info(self, congress_info: Dict):
+        """Set detailed congress information including models for each representative"""
+        self.metrics["congress_info"] = congress_info
+    
     def _extract_congress_summary(self, context_data: Dict) -> Optional[Dict]:
         """Extract Congress voting summary from context tracking data"""
         congress_decisions = []
@@ -822,6 +826,42 @@ class ReportGenerator:
                 </div>
             </div>
             {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Congress Configuration (if available) -->
+        {% if metrics.congress_info %}
+        <div class="section">
+            <h2>🏛️ Congressional Configuration</h2>
+            <div class="context-stats">
+                <div class="stat-card">
+                    <div class="stat-value">{{ metrics.congress_info.models|unique|length }}</div>
+                    <div class="stat-label">Unique Models</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ metrics.congress_info.total_representatives }}</div>
+                    <div class="stat-label">Representatives</div>
+                </div>
+            </div>
+            <div style="margin-top: 1.5rem;">
+                <h3 style="color: #374151; font-size: 1.2rem; margin-bottom: 1rem;">Representative Details</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1rem;">
+                    {% for rep in metrics.congress_info.representatives %}
+                    <div style="background: #f8fafc; padding: 1.5rem; border-radius: 8px; border-left: 4px solid #667eea;">
+                        <div style="font-weight: 700; color: #374151; font-size: 1.1rem; margin-bottom: 0.5rem;">{{ rep.name }}</div>
+                        <div style="font-style: italic; color: #6366f1; margin-bottom: 0.75rem;">{{ rep.title }}</div>
+                        <div style="background: white; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;">
+                            <div style="font-size: 0.85rem; color: #4b5563; margin-bottom: 0.5rem;"><strong>Personality:</strong></div>
+                            <div style="font-size: 0.9rem; color: #374151; line-height: 1.4;">{{ rep.personality }}</div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+                            <span style="color: #6b7280;"><strong>Voting Style:</strong> {{ rep.voting_style }}</span>
+                            <span style="background: #e0e7ff; padding: 0.25rem 0.5rem; border-radius: 4px; color: #3730a3; font-weight: 600;">{{ rep.model }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
         {% endif %}
 
