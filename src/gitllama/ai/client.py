@@ -208,10 +208,19 @@ class OllamaClient:
         Yields:
             Response chunks as strings
         """
+        # Calculate context window usage
+        total_tokens = self.count_messages_tokens(messages)
+        if system:
+            total_tokens += self.count_tokens(system)
+        
+        max_context = self.get_model_context_size(model)
+        usage_percentage = int((total_tokens / max_context) * 100)
+        
         # Log AI query with robot emoji and context info
         user_message = messages[-1]['content'] if messages else "No message"
         query_preview = user_message[:100] + "..." if len(user_message) > 100 else user_message
         logger.info(f"🤖 Querying {model} with context '{context_name}': {query_preview}")
+        logger.info(f"📊 Context window usage: {usage_percentage}% ({total_tokens}/{max_context} tokens)")
         
         # Record AI call for metrics
         context_manager.record_ai_call("stream_chat", f"{model}: {query_preview}")
