@@ -36,6 +36,7 @@ class ReportGenerator:
         self.executive_summary = {}
         self.file_operations = []
         self.metrics = {}
+        self.congress_votes = []  # Track all Congress votes
         
         # Create output directory
         self.output_dir.mkdir(exist_ok=True)
@@ -66,6 +67,11 @@ class ReportGenerator:
             "context_window": context_window,
             "total_tokens": total_tokens
         }
+    
+    def add_congress_vote(self, vote_data: Dict):
+        """Add a Congress vote to the report"""
+        self.congress_votes.append(vote_data)
+        logger.debug(f"Added Congress vote: {vote_data.get('approved', 'unknown')}")
     
     def _generate_color_for_variable(self, var_name: str) -> str:
         """Generate a consistent color for a variable name"""
@@ -161,6 +167,28 @@ class ReportGenerator:
         # Get all tracked context data
         context_data = context_tracker.export_for_report()
         
+        # Try to get Congress summary if available
+        congress_summary = None
+        try:
+            # Check if any Congress data exists in context variables
+            for stage in context_data.get('stages', []):
+                for var_name in stage.get('variables', {}):
+                    if 'congress' in var_name:
+                        # Congress is being used, get summary
+                        from ..ai.query import AIQuery
+                        from ..ai.client import OllamaClient
+                        # Note: This is just for report, actual summary would come from the running instance
+                        congress_summary = {
+                            "total_votes": len(self.congress_votes),
+                            "approved": sum(1 for v in self.congress_votes if v.get('approved')),
+                            "rejected": sum(1 for v in self.congress_votes if not v.get('approved')),
+                            "unanimity_rate": 0.0,
+                            "by_representative": {}
+                        }
+                        break
+        except:
+            pass
+        
         # Prepare template data
         template_data = {
             "timestamp": self.timestamp,
@@ -168,6 +196,7 @@ class ReportGenerator:
             "executive_summary": self.executive_summary,
             "context_tracking": context_data,
             "metrics": self.metrics,
+            "congress_summary": congress_summary,
             "gitllama_version": __version__,
             "format_prompt": self._format_prompt_with_variables,
             "generate_color": self._generate_color_for_variable,
@@ -394,6 +423,56 @@ class ReportGenerator:
             background: #10b981; color: white; border-color: #10b981;
         }
         
+        /* Congress voting section */
+        .congress-inline {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            margin-left: 1rem; padding: 0.25rem 0.5rem;
+            background: rgba(251, 191, 36, 0.1); border-radius: 4px;
+            border: 1px solid #fbbf24;
+        }
+        .congress-votes-inline {
+            display: flex; gap: 0.25rem;
+        }
+        .vote-symbol {
+            display: inline-block; width: 20px; height: 20px;
+            border-radius: 50%; text-align: center; line-height: 20px;
+            font-size: 0.8rem; font-weight: bold; cursor: help;
+            position: relative;
+        }
+        .vote-yes {
+            background: #22c55e; color: white;
+        }
+        .vote-no {
+            background: #ef4444; color: white;
+        }
+        .vote-tooltip {
+            position: absolute; bottom: 25px; left: 50%;
+            transform: translateX(-50%); background: #374151;
+            color: white; padding: 0.75rem; border-radius: 6px;
+            font-size: 0.75rem; white-space: nowrap; z-index: 1000;
+            opacity: 0; visibility: hidden; transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            max-width: 300px; white-space: normal;
+        }
+        .vote-symbol:hover .vote-tooltip {
+            opacity: 1; visibility: visible;
+        }
+        .vote-tooltip::after {
+            content: ''; position: absolute; top: 100%; left: 50%;
+            transform: translateX(-50%); border: 5px solid transparent;
+            border-top-color: #374151;
+        }
+        .congress-verdict-inline {
+            font-size: 0.85rem; font-weight: 600;
+            padding: 0.125rem 0.5rem; border-radius: 3px;
+        }
+        .verdict-approved {
+            background: #dcfce7; color: #166534;
+        }
+        .verdict-rejected {
+            background: #fee2e2; color: #991b1b;
+        }
+        
         /* Footer */
         .footer { 
             text-align: center; padding: 2rem; color: #64748b; 
@@ -462,6 +541,46 @@ class ReportGenerator:
                 </div>
             </div>
         </div>
+        
+        <!-- Congress Summary (if available) -->
+        {% if congress_summary %}
+        <div class="section">
+            <h2>🏛️ Congressional Oversight Summary</h2>
+            <div class="context-stats">
+                <div class="stat-card">
+                    <div class="stat-value">{{ congress_summary.total_votes }}</div>
+                    <div class="stat-label">Total Votes</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ congress_summary.approved }}</div>
+                    <div class="stat-label">Approved</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ congress_summary.rejected }}</div>
+                    <div class="stat-label">Rejected</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ (congress_summary.unanimity_rate * 100)|round(0) }}%</div>
+                    <div class="stat-label">Unanimity</div>
+                </div>
+            </div>
+            {% if congress_summary.by_representative %}
+            <div style="margin-top: 1rem;">
+                <h3 style="color: #374151; font-size: 1.2rem; margin-bottom: 0.75rem;">Representative Voting Patterns</h3>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                    {% for rep_name, votes in congress_summary.by_representative.items() %}
+                    <div style="background: #f8fafc; padding: 1rem; border-radius: 6px; border-left: 4px solid #f59e0b;">
+                        <div style="font-weight: 600; color: #374151;">{{ rep_name }}</div>
+                        <div style="font-size: 0.9rem; color: #6b7280; margin-top: 0.25rem;">
+                            ✅ {{ votes.yes }} Yes • ❌ {{ votes.no }} No
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
 
         <!-- AI Context Exchanges -->
         <div class="section">
@@ -510,7 +629,38 @@ class ReportGenerator:
                 {% for pair in stage.prompt_response_pairs %}
                 <div class="prompt-response-pair">
                     <div class="pair-header">
-                        <div class="pair-number">Exchange #{{ loop.index }}</div>
+                        <div class="pair-number">
+                            Exchange #{{ loop.index }}
+                            <!-- Congress Voting Inline -->
+                            {% set congress_var = None %}
+                            {% for var_name, var_data in pair.variables_used.items() %}
+                                {% if var_name.endswith('_congress') and var_data.vote_details and not congress_var %}
+                                    {% set congress_var = var_data %}
+                                {% endif %}
+                            {% endfor %}
+                            {% if congress_var %}
+                            <div class="congress-inline">
+                                <span>🏛️</span>
+                                <div class="congress-votes-inline">
+                                    {% for vote_detail in congress_var.vote_details %}
+                                    <div class="vote-symbol {% if vote_detail.vote %}vote-yes{% else %}vote-no{% endif %}">
+                                        {% if vote_detail.vote %}✓{% else %}✗{% endif %}
+                                        <div class="vote-tooltip">
+                                            <strong>{{ vote_detail.name }}</strong><br>
+                                            {{ vote_detail.title }}<br><br>
+                                            <strong>Vote:</strong> {% if vote_detail.vote %}YES{% else %}NO{% endif %}<br>
+                                            <strong>Confidence:</strong> {{ (vote_detail.confidence * 100)|round }}%<br>
+                                            <strong>Reasoning:</strong> {{ vote_detail.reasoning }}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                <span class="congress-verdict-inline {% if congress_var.approved %}verdict-approved{% else %}verdict-rejected{% endif %}">
+                                    {{ congress_var.votes }}
+                                </span>
+                            </div>
+                            {% endif %}
+                        </div>
                         <div class="pair-meta">
                             <span>⏱️ {{ pair.timestamp.split('T')[1].split('.')[0] }}</span>
                             <span>📝 {{ pair.prompt_size }} chars prompt</span>
@@ -541,6 +691,7 @@ class ReportGenerator:
                             </button>
                         </div>
                     </div>
+                    
                 </div>
                 {% endfor %}
                 

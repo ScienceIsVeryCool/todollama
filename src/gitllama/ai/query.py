@@ -11,6 +11,7 @@ from ..utils.metrics import context_manager
 from ..utils.context_tracker import context_tracker
 from .parser import ResponseParser
 from .context_compressor import ContextCompressor
+from .congress import Congress, CongressDecision
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class ChoiceResult:
     raw: str
     context_compressed: bool = False
     compression_rounds: int = 0
+    congress_decision: Optional[CongressDecision] = None
 
 
 @dataclass 
@@ -33,6 +35,7 @@ class OpenResult:
     raw: str
     context_compressed: bool = False
     compression_rounds: int = 0
+    congress_decision: Optional[CongressDecision] = None
 
 
 class AIQuery:
@@ -44,6 +47,7 @@ class AIQuery:
         self.parser = ResponseParser()
         self.compressor = ContextCompressor(client, model)
         self._compression_enabled = True
+        self.congress = Congress(client, model)
     
     def choice(
         self, 
@@ -140,13 +144,41 @@ class AIQuery:
         # Parse the choice
         index, confidence = self.parser.parse_choice(response, options)
         
+        # Get Congress evaluation
+        congress_decision = self.congress.evaluate_response(
+            original_prompt=prompt,
+            ai_response=response,
+            context=context,
+            decision_type="choice"
+        )
+        
+        # Log Congress decision in context tracker
+        context_tracker.store_variable(
+            f"{context_name}_congress",
+            {
+                "approved": congress_decision.approved,
+                "votes": f"{congress_decision.vote_count[0]}-{congress_decision.vote_count[1]}",
+                "unanimous": congress_decision.unanimity,
+                "representatives": [v.representative.name for v in congress_decision.votes],
+                "vote_details": [{
+                    "name": v.representative.name,
+                    "title": v.representative.title,
+                    "vote": v.vote,
+                    "confidence": v.confidence,
+                    "reasoning": v.reasoning
+                } for v in congress_decision.votes]
+            },
+            "Congressional evaluation of choice"
+        )
+        
         result = ChoiceResult(
             index=index,
             value=options[index] if index >= 0 else options[0],
             confidence=confidence,
             raw=response.strip(),
             context_compressed=compressed,
-            compression_rounds=compression_rounds
+            compression_rounds=compression_rounds,
+            congress_decision=congress_decision
         )
         
         # Track the parsed result
@@ -250,11 +282,39 @@ class AIQuery:
             "Cleaned response content"
         )
         
+        # Get Congress evaluation
+        congress_decision = self.congress.evaluate_response(
+            original_prompt=prompt,
+            ai_response=response,
+            context=context,
+            decision_type="open"
+        )
+        
+        # Log Congress decision in context tracker
+        context_tracker.store_variable(
+            f"{context_name}_congress",
+            {
+                "approved": congress_decision.approved,
+                "votes": f"{congress_decision.vote_count[0]}-{congress_decision.vote_count[1]}",
+                "unanimous": congress_decision.unanimity,
+                "representatives": [v.representative.name for v in congress_decision.votes],
+                "vote_details": [{
+                    "name": v.representative.name,
+                    "title": v.representative.title,
+                    "vote": v.vote,
+                    "confidence": v.confidence,
+                    "reasoning": v.reasoning
+                } for v in congress_decision.votes]
+            },
+            "Congressional evaluation of open response"
+        )
+        
         result = OpenResult(
             content=content,
             raw=response.strip(),
             context_compressed=compressed,
-            compression_rounds=compression_rounds
+            compression_rounds=compression_rounds,
+            congress_decision=congress_decision
         )
         
         logger.info(f"✅ Response: {len(content)} chars")
@@ -281,3 +341,8 @@ class AIQuery:
         """Enable or disable automatic context compression."""
         self._compression_enabled = enabled
         logger.info(f"Context compression {'enabled' if enabled else 'disabled'}")
+    
+    
+    def get_congress_summary(self) -> Dict:
+        """Get summary of all Congressional votes."""
+        return self.congress.get_voting_summary()
