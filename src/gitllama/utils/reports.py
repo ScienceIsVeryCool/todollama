@@ -902,7 +902,10 @@ class ReportGenerator:
                             {% endif %}
                         </div>
                         <div class="pair-meta">
-                            <span>⏱️ {% if pair.timestamp %}{{ pair.timestamp.split('T')[1].split('.')[0] if 'T' in pair.timestamp else pair.timestamp }}{% else %}--:--:--{% endif %}</span>
+                            <span>🕐 {% if pair.clock_time %}{{ pair.clock_time }}{% else %}--:--:--{% endif %}</span>
+                            {% if pair.execution_time_seconds %}
+                            <span>⏱️ {{ pair.execution_time_seconds|round(2) }}s</span>
+                            {% endif %}
                             <span>📝 {{ pair.prompt_size }} chars prompt</span>
                             <span>💬 {{ pair.response_size }} chars response</span>
                             {% if congress_var %}

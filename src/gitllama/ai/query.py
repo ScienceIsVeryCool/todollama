@@ -5,6 +5,7 @@ Enhanced AI Query Interface for GitLlama
 
 import logging
 import re
+import time
 from typing import List, Optional, Dict, Union
 from dataclasses import dataclass
 from .client import OllamaClient
@@ -182,7 +183,7 @@ File content:"""
         )
         
         # Make query and get congress decision
-        response, congress_decision = self._execute_query(
+        response, congress_decision, execution_time = self._execute_query(
             prompt, context_name, "multiple_choice"
         )
         
@@ -195,7 +196,7 @@ File content:"""
         
         context_tracker.store_prompt_and_response(
             prompt=prompt, response=response, variable_map=variables_used,
-            query_type="multiple_choice"
+            query_type="multiple_choice", execution_time_seconds=execution_time
         )
         
         # Store result
@@ -250,7 +251,7 @@ File content:"""
         )
         
         # Make query and get congress decision
-        response, congress_decision = self._execute_query(
+        response, congress_decision, execution_time = self._execute_query(
             prompt, context_name, "single_word"
         )
         
@@ -263,7 +264,7 @@ File content:"""
         
         context_tracker.store_prompt_and_response(
             prompt=prompt, response=response, variable_map=variables_used,
-            query_type="single_word"
+            query_type="single_word", execution_time_seconds=execution_time
         )
         
         result = SingleWordResult(
@@ -315,7 +316,7 @@ File content:"""
         )
         
         # Make query and get congress decision
-        response, congress_decision = self._execute_query(
+        response, congress_decision, execution_time = self._execute_query(
             full_prompt, context_name, "open"
         )
         
@@ -328,7 +329,7 @@ File content:"""
         
         context_tracker.store_prompt_and_response(
             prompt=full_prompt, response=response, variable_map=variables_used,
-            query_type="open"
+            query_type="open", execution_time_seconds=execution_time
         )
         
         result = OpenResult(
@@ -377,7 +378,7 @@ File content:"""
         )
         
         # Make query and get congress decision
-        response, congress_decision = self._execute_query(
+        response, congress_decision, execution_time = self._execute_query(
             prompt, context_name, "file_write"
         )
         
@@ -390,7 +391,7 @@ File content:"""
         
         context_tracker.store_prompt_and_response(
             prompt=prompt, response=response, variable_map=variables_used,
-            query_type="file_write"
+            query_type="file_write", execution_time_seconds=execution_time
         )
         
         result = FileWriteResult(
@@ -447,6 +448,8 @@ File content:"""
     
     def _execute_query(self, prompt, context_name, query_type):
         """Execute the query and get congress decision"""
+        start_time = time.time()
+        
         messages = [{"role": "user", "content": prompt}]
         
         logger.info(f"🎯 {query_type.title()}: {prompt[:50]}...")
@@ -457,6 +460,9 @@ File content:"""
         for chunk in self.client.chat_stream(self.model, messages, context_name=context_name):
             response += chunk
         
+        execution_time = time.time() - start_time
+        logger.info(f"⏱️ Query executed in {execution_time:.2f} seconds")
+        
         # Get congress evaluation
         congress_decision = self.congress.evaluate_response(
             original_prompt=prompt,
@@ -465,7 +471,7 @@ File content:"""
             decision_type=query_type
         )
         
-        return response, congress_decision
+        return response, congress_decision, execution_time
     
     def _build_congress_data(self, congress_decision):
         """Build congress data dictionary for storage"""

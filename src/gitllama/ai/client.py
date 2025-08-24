@@ -26,6 +26,8 @@ class OllamaClient:
             "gemma3:1b": 32000,
             "gemma3:12b": 128000,
             "gemma3:4b": 128000,
+            "gpt-oss:20b": 128000,
+            "gpt-oss:120b": 128000,
 
             # Default fallback
             "default": 16000

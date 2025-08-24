@@ -86,7 +86,8 @@ class ContextTracker:
     def store_prompt_and_response(self, prompt: str, response: str, 
                                  template: Optional[str] = None,
                                  variable_map: Optional[Dict[str, str]] = None,
-                                 query_type: Optional[str] = None):
+                                 query_type: Optional[str] = None,
+                                 execution_time_seconds: Optional[float] = None):
         """Store a prompt with its response and variable mapping
         
         Args:
@@ -95,6 +96,7 @@ class ContextTracker:
             template: Optional template showing where variables go
             variable_map: Optional explicit mapping of variables used
             query_type: Optional query type (multiple_choice, single_word, open, file_write)
+            execution_time_seconds: Optional execution time in seconds
         """
         if not self.current_stage:
             self.start_stage("default")
@@ -107,15 +109,18 @@ class ContextTracker:
         if not template:
             template, variable_map = self._extract_template_from_prompt(prompt, variable_map)
         
+        now = datetime.now()
         pair_data = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now.isoformat(),
+            "clock_time": now.strftime("%H:%M:%S"),
             "prompt": prompt,
             "response": response,
             "template": template,
             "variables_used": variable_map,
             "prompt_size": len(prompt),
             "response_size": len(response),
-            "query_type": query_type
+            "query_type": query_type,
+            "execution_time_seconds": execution_time_seconds
         }
         
         self.stages[self.current_stage]["prompt_response_pairs"].append(pair_data)
