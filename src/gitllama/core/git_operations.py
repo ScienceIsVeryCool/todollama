@@ -164,8 +164,12 @@ class GitAutomator:
         logger.info(f"Created file: {filename}")
         return [filename]
     
-    def commit_changes(self) -> str:
-        """Commit changes to the repository with AI-generated commit message."""
+    def commit_changes(self) -> tuple[str, str]:
+        """Commit changes to the repository with AI-generated commit message.
+        
+        Returns:
+            Tuple of (commit_hash, commit_message)
+        """
         if not self.repo_path:
             raise GitOperationError("No repository cloned. Call clone_repository first.")
         
@@ -176,7 +180,7 @@ class GitAutomator:
         if not status_result.stdout.strip():
             logger.warning("No changes to commit")
             # Return a dummy commit hash or raise an error
-            return "no-changes"
+            return "no-changes", "No changes to commit"
         
         # Add all changes
         logger.info("🔧 Git: Adding all changes to staging")
@@ -186,10 +190,10 @@ class GitAutomator:
         diff_result = self._run_git_command(['git', 'diff', '--cached', '--stat'])
         if not diff_result.stdout.strip():
             logger.warning("No staged changes to commit after git add")
-            return "no-changes"
+            return "no-changes", "No staged changes to commit"
         
         # Generate commit message
-        message = "feat: automated improvements by GitLlama AI"
+        message = "feat: automated improvements by GitLlama AI\n\n🤖 Generated with GitLlama v0.7.4\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
         
         # Commit changes
         self._run_git_command(['git', 'commit', '-m', message])
@@ -199,7 +203,7 @@ class GitAutomator:
         commit_hash = result.stdout.strip()
         logger.info(f"🔧 Git: Successfully committed: {commit_hash[:8]}")
         
-        return commit_hash
+        return commit_hash, message
     
     def push_changes(self, branch: Optional[str] = None) -> str:
         """Push changes to the remote repository."""
@@ -263,10 +267,11 @@ class GitAutomator:
             
             # Step 4: Commit changes
             if result['modified_files']:
-                commit_hash = self.commit_changes()
+                commit_hash, commit_msg = self.commit_changes()
                 self.push_changes(branch=branch_name)
             else:
                 commit_hash = "no-changes"
+                commit_msg = "No changes to commit"
             
             # Step 5: Generate final report
             report_path = None
@@ -277,7 +282,10 @@ class GitAutomator:
                         branch=branch_name,
                         modified_files=result['modified_files'],
                         commit_hash=commit_hash,
-                        success=True
+                        success=True,
+                        commit_message=commit_msg,
+                        file_diffs=result.get('file_diffs', {}),
+                        branch_info={"created": True, "base_branch": "main"}
                     )
                 except Exception as e:
                     logger.warning(f"Failed to generate report: {e}")
@@ -306,7 +314,10 @@ class GitAutomator:
                         branch=branch_name or "unknown",
                         modified_files=[],
                         commit_hash="failed",
-                        success=False
+                        success=False,
+                        commit_message="Execution failed",
+                        file_diffs={},
+                        branch_info={}
                     )
                 except Exception as report_error:
                     logger.warning(f"Failed to generate error report: {report_error}")

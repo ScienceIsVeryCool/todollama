@@ -252,14 +252,14 @@ List the files:"""
         return file_lines
     
     def _collect_files_with_context(self, plan: str, planned_files: List[str]) -> List[Dict]:
-        """Collect concrete file paths using single-word queries with full project context"""
+        """Collect concrete file paths using multiple choice validation for each file"""
         logger.info(f"Collecting concrete file paths from {len(planned_files)} planned files")
         
-        files = []
         all_available_files = self._get_all_file_paths()
         project_tree = self._generate_project_tree()
         
-        # Process each planned file
+        # Step 1: Process and clean planned files
+        processed_files = []
         for planned_file in planned_files:
             logger.info(f"Processing planned file: {planned_file}")
             
@@ -274,7 +274,7 @@ List the files:"""
                 operation = "CREATE"
                 clean_file_path = planned_file[8:].strip()
             
-            # For existing files, verify they exist or find the best match
+            # For existing files, resolve the path
             if operation == "EDIT":
                 actual_file_path = self._resolve_file_path_with_ai(
                     clean_file_path, all_available_files, project_tree, plan
@@ -284,17 +284,94 @@ List the files:"""
                 actual_file_path = clean_file_path
             
             if actual_file_path and actual_file_path != "SKIP":
-                files.append({
+                processed_files.append({
                     "path": actual_file_path,
                     "operation": operation,
-                    "reason": f"From plan: {planned_file}"
+                    "original": planned_file
                 })
-                logger.info(f"Added file: {actual_file_path} ({operation})")
         
-        # Interactive loop for additional files if AI wants to add more
-        files = self._collect_additional_files(plan, files, all_available_files, project_tree)
+        # Step 2: Filter out files with spaces in their paths
+        logger.info(f"Filtering out files with spaces from {len(processed_files)} files")
+        valid_files = []
+        filtered_out = []
         
-        return files
+        for file_info in processed_files:
+            if ' ' in file_info['path']:
+                filtered_out.append(file_info['path'])
+                logger.warning(f"Filtered out file with spaces: {file_info['path']}")
+            else:
+                valid_files.append(file_info)
+        
+        if filtered_out:
+            logger.info(f"Filtered out {len(filtered_out)} files with spaces: {filtered_out}")
+        
+        logger.info(f"Proceeding with {len(valid_files)} space-free files for validation")
+        
+        # Step 3: Validate each file individually with multiple choice
+        verified_files = self._validate_files_individually(valid_files, plan, all_available_files, project_tree)
+        
+        # Step 4: Still allow AI to add additional files with the "DONE" loop
+        final_files = self._collect_additional_files(plan, verified_files, all_available_files, project_tree)
+        
+        return final_files
+    
+    def _validate_files_individually(self, candidate_files: List[Dict], plan: str, 
+                                   all_available_files: List[str], project_tree: str) -> List[Dict]:
+        """Validate each file individually with yes/no multiple choice"""
+        logger.info(f"Validating {len(candidate_files)} files individually with AI")
+        
+        verified_files = []
+        
+        for i, file_info in enumerate(candidate_files, 1):
+            file_path = file_info['path']
+            operation = file_info['operation']
+            original = file_info['original']
+            
+            logger.info(f"Validating file {i}/{len(candidate_files)}: {file_path}")
+            
+            # Build comprehensive context for this specific file validation
+            context_parts = [
+                f"VALIDATING FILE: {file_path}",
+                f"OPERATION: {operation}",
+                f"ORIGINAL FROM PLAN: {original}",
+                "",
+                "=== ACTION PLAN ===",
+                plan[:1500],
+                "",
+                "=== PROJECT STRUCTURE ===",
+                project_tree[:1000],
+                "",
+                "=== ALL AVAILABLE FILES (sample) ===",
+                "\n".join(f"  {f}" for f in all_available_files[:20])
+            ]
+            
+            if len(all_available_files) > 20:
+                context_parts.append(f"  ... and {len(all_available_files) - 20} more files")
+            
+            validation_context = "\n".join(context_parts)
+            
+            # Ask yes/no validation question
+            question = f"Should {file_path} be included in the files to work on?"
+            
+            result = self.ai.multiple_choice(
+                question=question,
+                options=["YES", "NO"],
+                context=validation_context,
+                context_name=f"validate_file_{i}"
+            )
+            
+            if result.value == "YES":
+                verified_files.append({
+                    "path": file_path,
+                    "operation": operation,
+                    "reason": f"AI validated: {original}"
+                })
+                logger.info(f"✅ File validated: {file_path} ({operation})")
+            else:
+                logger.info(f"❌ File rejected: {file_path} ({operation})")
+        
+        logger.info(f"File validation complete: {len(verified_files)}/{len(candidate_files)} files approved")
+        return verified_files
     
     def _resolve_file_path_with_ai(self, intended_path: str, all_files: List[str], project_tree: str, plan: str) -> str:
         """Use AI to resolve the intended file path to an actual existing file"""
@@ -389,12 +466,17 @@ Respond with the exact relative file path (e.g., 'src/utils.py') or 'DONE' if no
                 logger.info("AI indicated no more files needed")
                 break
             
-            # Validate and add the file
+            # Validate and add the file (with space filtering)
             if response and response not in selected_files:
                 # Resolve the file path
                 actual_path = self._resolve_file_path_with_ai(response, all_files, project_tree, plan)
                 
                 if actual_path and actual_path != "SKIP" and actual_path not in selected_files:
+                    # Filter out files with spaces
+                    if ' ' in actual_path:
+                        logger.warning(f"Rejected additional file with spaces: {actual_path}")
+                        continue
+                    
                     operation = self._determine_operation(actual_path, plan)
                     files.append({
                         "path": actual_path,

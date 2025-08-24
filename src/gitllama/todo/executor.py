@@ -19,11 +19,16 @@ class TodoExecutor:
         self.model = model
         self.ai = AIQuery(client, model)
     
-    def execute_plan(self, repo_path: Path, action_plan: Dict) -> List[str]:
-        """Execute the action plan"""
+    def execute_plan(self, repo_path: Path, action_plan: Dict) -> tuple[List[str], Dict[str, Dict]]:
+        """Execute the action plan and capture file diffs
+        
+        Returns:
+            Tuple of (modified_files, file_diffs) where file_diffs contains before/after content
+        """
         logger.info(f"Executing plan with {len(action_plan['files_to_modify'])} files")
         
         modified_files = []
+        file_diffs = {}
         
         for file_info in action_plan['files_to_modify']:
             file_path = repo_path / file_info['path']
@@ -43,18 +48,32 @@ class TodoExecutor:
                     action_plan['plan'],
                     action_plan['todo_excerpt']
                 )
+                
+                # Store diff information
+                file_diffs[file_info['path']] = {
+                    'before': original_content,
+                    'after': content,
+                    'operation': operation
+                }
+                
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 file_path.write_text(content)
                 modified_files.append(file_info['path'])
                 
             elif operation == 'DELETE':
                 if file_path.exists():
+                    original_content = file_path.read_text()
+                    file_diffs[file_info['path']] = {
+                        'before': original_content,
+                        'after': '',
+                        'operation': operation
+                    }
                     file_path.unlink()
                     modified_files.append(file_info['path'])
                 else:
                     logger.warning(f"File to delete doesn't exist: {file_info['path']}")
         
-        return modified_files
+        return modified_files, file_diffs
     
     def _edit_file_content(self, file_path: str, original_content: str, plan: str, todo: str) -> str:
         """Edit file content (create new or completely rewrite existing)"""

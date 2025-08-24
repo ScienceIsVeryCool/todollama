@@ -52,7 +52,7 @@ class SimplifiedCoordinator:
         
         # Phase 3: Execute plan
         logger.info("\n🚀 PHASE 3: EXECUTION")
-        modified_files = self.executor.execute_plan(repo_path, action_plan)
+        modified_files, file_diffs = self.executor.execute_plan(repo_path, action_plan)
         logger.info(f"Execution complete: {len(modified_files)} files modified")
         
         logger.info("=" * 60)
@@ -63,13 +63,15 @@ class SimplifiedCoordinator:
             "success": True,
             "branch_name": action_plan['branch_name'],
             "modified_files": modified_files,
+            "file_diffs": file_diffs,
             "plan": action_plan['plan'],
             "analysis_summary": analysis['summary'],
             "todo_found": bool(analysis['todo_content'])
         }
     
     def generate_final_report(self, repo_path: str, branch: str, modified_files: List[str], 
-                             commit_hash: str, success: bool) -> Optional[Path]:
+                             commit_hash: str, success: bool, commit_message: str = "",
+                             file_diffs: Dict = None, branch_info: Dict = None) -> Optional[Path]:
         """Generate the final HTML report if report generator is available.
         
         Args:
@@ -78,6 +80,9 @@ class SimplifiedCoordinator:
             modified_files: List of modified file paths
             commit_hash: Git commit hash
             success: Whether the workflow was successful
+            commit_message: The exact commit message used
+            file_diffs: Dictionary of file paths to their before/after content
+            branch_info: Additional branch information
             
         Returns:
             Path to generated report or None if no report generator
@@ -99,7 +104,10 @@ class SimplifiedCoordinator:
             modified_files=modified_files,
             commit_hash=commit_hash,
             success=success,
-            total_decisions=total_decisions
+            total_decisions=total_decisions,
+            commit_message=commit_message,
+            file_diffs=file_diffs,
+            branch_info=branch_info
         )
         
         # Set model information

@@ -42,8 +42,22 @@ class ReportGenerator:
         logger.info(f"ReportGenerator initialized for {repo_url}")
     
     def set_executive_summary(self, repo_path: str, branch: str, modified_files: List[str], 
-                            commit_hash: str, success: bool, total_decisions: int):
-        """Set the executive summary data"""
+                            commit_hash: str, success: bool, total_decisions: int,
+                            commit_message: str = "", file_diffs: Dict[str, Dict] = None,
+                            branch_info: Dict = None):
+        """Set the executive summary data with detailed execution information
+        
+        Args:
+            repo_path: Path to the repository
+            branch: Branch name used
+            modified_files: List of modified file paths
+            commit_hash: Commit hash created
+            success: Whether execution was successful
+            total_decisions: Number of AI decisions made
+            commit_message: The exact commit message used
+            file_diffs: Dictionary of file paths to their before/after content
+            branch_info: Additional branch information (created, existing, etc.)
+        """
         total_workflow_time = (datetime.now() - self.start_time).total_seconds()
         
         self.executive_summary = {
@@ -52,9 +66,12 @@ class ReportGenerator:
             "branch_selected": branch,
             "files_modified": modified_files,
             "commit_hash": commit_hash,
+            "commit_message": commit_message,
             "success": success,
             "total_ai_decisions": total_decisions,
             "execution_time": total_workflow_time,
+            "file_diffs": file_diffs or {},
+            "branch_info": branch_info or {},
         }
         logger.debug("Set executive summary data")
     
@@ -675,6 +692,97 @@ class ReportGenerator:
                 </div>
             </div>
             {% endif %}
+            
+            <!-- Detailed Execution Information -->
+            <div style="margin-top: 1.5rem;">
+                <h3 style="color: #374151; font-size: 1.2rem; margin-bottom: 0.75rem;">🎯 Execution Details</h3>
+                
+                <!-- Git Information -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                    <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                        <div style="font-weight: 600; color: #1e40af;">Branch Used</div>
+                        <div style="font-family: monospace; color: #374151; margin-top: 0.25rem;">{{ executive_summary.branch_selected }}</div>
+                    </div>
+                    
+                    {% if executive_summary.commit_hash %}
+                    <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid #10b981;">
+                        <div style="font-weight: 600; color: #065f46;">Commit Hash</div>
+                        <div style="font-family: monospace; color: #374151; margin-top: 0.25rem; word-break: break-all;">{{ executive_summary.commit_hash }}</div>
+                    </div>
+                    {% endif %}
+                    
+                    <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                        <div style="font-weight: 600; color: #92400e;">Files Modified</div>
+                        <div style="color: #374151; margin-top: 0.25rem;">{{ executive_summary.files_modified|length }} files</div>
+                    </div>
+                </div>
+                
+                <!-- Commit Message -->
+                {% if executive_summary.commit_message %}
+                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid #8b5cf6; margin-bottom: 1rem;">
+                    <div style="font-weight: 600; color: #7c3aed; margin-bottom: 0.5rem;">📝 Commit Message</div>
+                    <div style="background: white; padding: 0.75rem; border-radius: 6px; font-family: monospace; white-space: pre-wrap; color: #374151; border: 1px solid #e5e7eb;">{{ executive_summary.commit_message }}</div>
+                </div>
+                {% endif %}
+                
+                <!-- File Modifications with Diffs -->
+                {% if executive_summary.files_modified %}
+                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid #ef4444;">
+                    <div style="font-weight: 600; color: #dc2626; margin-bottom: 0.75rem;">📁 File Modifications</div>
+                    
+                    {% for file_path in executive_summary.files_modified %}
+                    <div style="margin-bottom: 1rem;">
+                        <button class="expandable-header" onclick="toggleFileDetails('file-{{ loop.index }}')" style="
+                            width: 100%; text-align: left; background: white; border: 1px solid #d1d5db;
+                            padding: 0.75rem; border-radius: 6px; font-family: monospace; cursor: pointer;
+                            display: flex; justify-content: space-between; align-items: center;
+                            font-weight: 600; color: #374151; transition: all 0.2s;
+                        ">
+                            <span>🗂️ {{ file_path }}</span>
+                            <span id="file-{{ loop.index }}-toggle" style="color: #6b7280;">▼</span>
+                        </button>
+                        
+                        <div id="file-{{ loop.index }}-content" style="display: none; margin-top: 0.5rem;">
+                            {% if executive_summary.file_diffs and executive_summary.file_diffs[file_path] %}
+                            {% set diff_data = executive_summary.file_diffs[file_path] %}
+                            
+                            <!-- Before/After Tabs -->
+                            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden;">
+                                <div style="display: flex; border-bottom: 1px solid #d1d5db; background: #f9fafb;">
+                                    <button onclick="showDiffTab('file-{{ loop.index }}-before', 'file-{{ loop.index }}-after', this)" 
+                                            class="diff-tab active" style="
+                                        flex: 1; padding: 0.75rem; border: none; background: none; cursor: pointer;
+                                        font-weight: 600; color: #374151; transition: all 0.2s;
+                                    ">📄 Before</button>
+                                    <button onclick="showDiffTab('file-{{ loop.index }}-after', 'file-{{ loop.index }}-before', this)"
+                                            class="diff-tab" style="
+                                        flex: 1; padding: 0.75rem; border: none; background: none; cursor: pointer;
+                                        font-weight: 600; color: #6b7280; transition: all 0.2s;
+                                    ">📄 After</button>
+                                </div>
+                                
+                                <!-- Before Content -->
+                                <div id="file-{{ loop.index }}-before" class="diff-content active" style="padding: 1rem;">
+                                    <pre style="margin: 0; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; color: #374151; background: #fef2f2; padding: 0.75rem; border-radius: 4px; max-height: 400px; overflow-y: auto;">{{ diff_data.before or "(New file)" }}</pre>
+                                </div>
+                                
+                                <!-- After Content -->
+                                <div id="file-{{ loop.index }}-after" class="diff-content" style="display: none; padding: 1rem;">
+                                    <pre style="margin: 0; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; color: #374151; background: #f0fdf4; padding: 0.75rem; border-radius: 4px; max-height: 400px; overflow-y: auto;">{{ diff_data.after or "(File deleted)" }}</pre>
+                                </div>
+                            </div>
+                            
+                            {% else %}
+                            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 1rem;">
+                                <div style="color: #6b7280; font-style: italic;">File modification details not available</div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
         </div>
         
         <!-- Congress Summary (if available) -->
@@ -932,6 +1040,35 @@ class ReportGenerator:
                 element.style.maxHeight = 'none';
                 button.textContent = 'Collapse';
             }
+        }
+        
+        function toggleFileDetails(fileId) {
+            const content = document.getElementById(fileId + '-content');
+            const toggle = document.getElementById(fileId + '-toggle');
+            
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                toggle.textContent = '▲';
+            } else {
+                content.style.display = 'none';
+                toggle.textContent = '▼';
+            }
+        }
+        
+        function showDiffTab(showId, hideId, buttonElement) {
+            // Show/hide content
+            document.getElementById(showId).style.display = 'block';
+            document.getElementById(hideId).style.display = 'none';
+            
+            // Update tab styling
+            const tabs = buttonElement.parentElement.querySelectorAll('.diff-tab');
+            tabs.forEach(tab => {
+                tab.style.color = '#6b7280';
+                tab.style.background = 'none';
+            });
+            
+            buttonElement.style.color = '#374151';
+            buttonElement.style.background = 'white';
         }
     </script>
 </body>
