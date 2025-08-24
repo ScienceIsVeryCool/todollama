@@ -88,18 +88,11 @@ Generate professional, working code with comments.
 Wrap the content in appropriate markdown code blocks."""
             context_name = "file_creation"
         
-        result = self.ai.open(
-            prompt=prompt,
+        result = self.ai.file_write(
+            requirements=prompt,
             context="",
             context_name=context_name
         )
         
-        # Extract code from markdown blocks
-        content = result.content
-        if '```' in content:
-            import re
-            matches = re.findall(r'```[\w]*\n(.*?)\n```', content, re.DOTALL)
-            if matches:
-                content = matches[0]
-        
-        return content
+        # The file_write query already cleans the content
+        return result.content

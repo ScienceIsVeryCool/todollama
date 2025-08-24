@@ -96,13 +96,13 @@ Rules:
 
 Respond with ONLY the branch name, no explanation."""
         
-        result = self.ai.open(
-            prompt=prompt,
+        result = self.ai.single_word(
+            question=prompt,
             context=f"Plan excerpt: {plan[:1000]}",
             context_name="branch_naming"
         )
         
-        branch = result.content.strip().lower().replace(' ', '-')
+        branch = result.word.strip().lower().replace(' ', '-')
         
         # Validate and sanitize
         if '/' not in branch:
@@ -131,7 +131,7 @@ Files already selected: {selected_files if selected_files else 'None yet'}
 IMPORTANT: Do NOT select any file that is already in the list above. Pick a NEW file that hasn't been selected yet."""
             
             # Ask for next file or DONE
-            result = self.ai.choice(
+            result = self.ai.multiple_choice(
                 question=f"File #{i+1}: Either give the name of the file you want to request access to, or say you are DONE",
                 options=[
                     "DONE - No more files needed",
@@ -153,7 +153,7 @@ IMPORTANT: Do NOT select any file that is already in the list above. Pick a NEW 
                 logger.warning(f"Duplicate file detected: {file_path}. Asking AI to try again.")
                 
                 # Ask AI to pick a different file
-                retry_result = self.ai.choice(
+                retry_result = self.ai.multiple_choice(
                     question=f"The file '{file_path}' is already selected. Pick a DIFFERENT file:",
                     options=[
                         "DONE - No more files needed",
@@ -177,7 +177,7 @@ IMPORTANT: Do NOT select any file that is already in the list above. Pick a NEW 
                     continue
             
             # Confirm the path
-            confirm_result = self.ai.choice(
+            confirm_result = self.ai.multiple_choice(
                 question=f"Confirm this file path is correct: {file_path}",
                 options=["YES - Correct", "NO - Try again"],
                 context=f"Intended file from plan: {result.value}\nAlready selected: {selected_files}"
@@ -248,7 +248,7 @@ IMPORTANT: Do NOT select any file that is already in the list above. Pick a NEW 
     
     def _determine_operation(self, file_path: str, plan: str) -> str:
         """Determine if file should be edited or deleted"""
-        result = self.ai.choice(
+        result = self.ai.multiple_choice(
             question=f"What operation for {file_path}?",
             options=["EDIT", "DELETE"],
             context=f"Based on plan: {plan[:500]}\n\nEDIT = Create new file or completely rewrite existing file\nDELETE = Remove the file"

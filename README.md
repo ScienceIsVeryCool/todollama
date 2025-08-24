@@ -2,14 +2,16 @@
 
 A git automation tool that uses AI to analyze repositories and make code changes. GitLlama clones a repository, analyzes the codebase, selects an appropriate branch, and makes iterative improvements.
 
-## Core Design: Multiple Choice vs Open Response
+## Core Design: 4 Query Types with Templates
 
-GitLlama's AI decision-making is built on a dual approach:
+GitLlama's AI decision-making is built on a comprehensive 4-query system with structured templates:
 
-- **Multiple Choice Queries**: For deterministic decisions (branch selection, file operations, validation checks)
-- **Open Response Queries**: For creative tasks (code generation, commit messages, analysis)
+- **🔤 Multiple Choice**: Lettered answers (A, B, C, etc.) for deterministic decisions
+- **📝 Single Word**: Single word responses perfect for variable storage and simple classifications
+- **📰 Open Response**: Essay-style detailed responses for complex analysis and explanations  
+- **📄 File Write**: Complete file content generation with automatic formatting cleanup
 
-This architecture ensures reliable decision-making while maintaining flexibility for complex tasks.
+Each query type uses carefully crafted templates with variable substitution, ensuring consistent, high-quality AI interactions while maintaining full Congressional oversight.
 
 ## Installation
 
@@ -89,21 +91,37 @@ Iterative development with validation:
 
 ## AI Query Interface
 
-The dual query system provides structure where needed:
+The 4-query system provides the right tool for every task:
 
 ```python
-# Multiple choice for decisions
-result = ai.choice(
+# Multiple choice for deterministic decisions with lettered answers
+result = ai.multiple_choice(
     question="Should we reuse an existing branch?",
     options=["REUSE", "CREATE"],
     context="Current branch: main"
 )
+# Returns: letter='A', index=0, value='REUSE'
 
-# Open response for content
-result = ai.open(
-    prompt="Generate a Python configuration file",
-    context="Project type: web application"
+# Single word for variable storage and classifications
+result = ai.single_word(
+    question="What programming language is this?",
+    context="Repository analysis shows..."
 )
+# Returns: word='Python'
+
+# Open response for detailed analysis and explanations
+result = ai.open(
+    prompt="Explain the architecture benefits",
+    context="Codebase structure and requirements..."
+)
+# Returns: content='Detailed essay-style response...'
+
+# File write for generating complete file content
+result = ai.file_write(
+    requirements="Create a Python configuration file with database settings",
+    context="Application uses PostgreSQL and Redis..."
+)
+# Returns: content='# config.py\nDATABASE_URL = "postgres://..."'
 ```
 
 ## Automatic Context Compression
@@ -165,6 +183,44 @@ Congressional votes appear inline with AI exchanges:
 
 This system ensures AI decisions undergo democratic review, adding a layer of validation and transparency to the automation process.
 
+## Query Type System 🎯
+
+GitLlama's enhanced 4-query system provides specialized tools for every AI interaction need:
+
+### 🔤 Multiple Choice Query
+- **Purpose**: Deterministic decisions requiring selection from predefined options
+- **Returns**: Letter (A, B, C, etc.), index, and option value
+- **Template**: Structured prompt with lettered options and clear instructions
+- **Best for**: Branch decisions, operation types, validation checks
+- **Example**: Choose deployment strategy, select file operation, pick testing approach
+
+### 📝 Single Word Query  
+- **Purpose**: Variable storage and simple classifications requiring one-word answers
+- **Returns**: Single cleaned word with confidence score
+- **Template**: Focused prompt emphasizing single-word response requirement
+- **Best for**: Language detection, status indicators, simple categorization
+- **Example**: Programming language, file type, priority level
+
+### 📰 Open Response Query
+- **Purpose**: Detailed analysis, explanations, and complex reasoning tasks
+- **Returns**: Comprehensive text content with proper formatting
+- **Template**: Essay-style prompt encouraging detailed, structured responses  
+- **Best for**: Architecture explanations, code analysis, documentation generation
+- **Example**: Explain design patterns, analyze code complexity, describe system benefits
+
+### 📄 File Write Query
+- **Purpose**: Complete file content generation ready for direct use
+- **Returns**: Clean file content with automatic formatting and code block removal
+- **Template**: File-focused prompt with clear content requirements
+- **Best for**: Configuration files, code generation, documentation creation
+- **Example**: Generate config.py, create test files, produce README content
+
+### Template Features
+- **Variable Substitution**: `{context}`, `{question}`, `{options}`, `{prompt}`, `{requirements}`
+- **Consistent Formatting**: Standardized instruction patterns across all query types
+- **Context Integration**: Smart context compression and variable tracking
+- **Congressional Oversight**: All queries evaluated by three Representatives with detailed reasoning
+
 ## Architecture
 
 ```
@@ -192,28 +248,29 @@ gitllama/
 
 ### Key Components:
 
-- **AIQuery**: Dual interface for structured choices and open responses with automatic compression
-- **Congress**: Congressional voting system with three Representatives for AI validation
+- **AIQuery**: 4-query interface (multiple_choice, single_word, open, file_write) with templated prompts and automatic compression
+- **Congress**: Congressional voting system with three Representatives for AI validation across all query types
 - **ContextCompressor**: Intelligent context compression for large codebases
 - **ContextTracker**: Tracks all variables and prompt-response pairs for detailed reports
 - **MetricsCollector**: Tracks AI calls, compressions, and performance metrics
 - **ProjectAnalyzer**: Hierarchical analysis of repository structure
-- **BranchAnalyzer**: Branch selection using multiple choice decisions
-- **FileModifier**: Iterative file modification with validation
-- **ResponseParser**: Extracts clean code from AI responses
+- **BranchAnalyzer**: Branch selection using multiple choice decisions with lettered answers
+- **FileModifier**: File generation using dedicated file_write queries with automatic cleanup
+- **ResponseParser**: Extracts clean results from all query types with appropriate parsing
 
 ## Reports
 
 GitLlama generates HTML reports with:
-- Timeline of AI decisions with color-coded variable highlighting
-- Congressional voting results with interactive tooltips
-- Branch selection rationale
-- File modification details  
-- API usage statistics
-- Context window tracking
+- Timeline of AI decisions with color-coded variable highlighting across all 4 query types
+- Congressional voting results with interactive tooltips for every query
+- Query type breakdown (multiple_choice, single_word, open, file_write) 
+- Branch selection rationale using lettered multiple choice responses
+- File generation details from dedicated file_write queries
+- API usage statistics by query type
+- Context window tracking and template usage
 - Compression events and metrics
-- Performance analytics
-- Representative voting patterns and unanimity rates
+- Performance analytics across all query types
+- Representative voting patterns and unanimity rates for each query type
 
 Reports are saved to `gitllama_reports/` directory.
 
