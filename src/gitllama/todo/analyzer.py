@@ -1,18 +1,18 @@
 """
-Simplified TODO-driven Project Analyzer for GitLlama
-Focuses on relating all code to TODO.md contents
+TODO-driven Project Analyzer with Context Tracking
 """
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from ..ai import OllamaClient, AIQuery
+from ..utils.context_tracker import context_tracker
 
 logger = logging.getLogger(__name__)
 
 
 class TodoAnalyzer:
-    """Analyzes repository in relation to TODO.md"""
+    """Analyzes repository in relation to TODO.md with full context tracking"""
     
     def __init__(self, client: OllamaClient, model: str = "gemma3:4b"):
         self.client = client
@@ -22,8 +22,11 @@ class TodoAnalyzer:
         self.usable_context_size = int(self.max_context_size * 0.7)
         
     def analyze_with_todo(self, repo_path: Path) -> Dict:
-        """Main entry point for TODO-driven analysis"""
+        """Main entry point for TODO-driven analysis with context tracking"""
         logger.info("Starting TODO-driven repository analysis")
+        
+        # Start tracking this stage
+        context_tracker.start_stage("TODO_Analysis")
         
         # Step 1: Find and read TODO.md
         todo_content = self._read_todo(repo_path)
@@ -31,26 +34,80 @@ class TodoAnalyzer:
             logger.warning("No TODO.md found - using fallback analysis")
             todo_content = "General improvements and maintenance"
         
+        # Track TODO content
+        context_tracker.store_variable(
+            "todo_content",
+            todo_content,
+            "Contents of TODO.md file"
+        )
+        
         # Step 2: Gather all files
         all_files = self._gather_files(repo_path)
         logger.info(f"Found {len(all_files)} files to analyze")
+        
+        # Track file list
+        context_tracker.store_variable(
+            "discovered_files",
+            [f['path'] for f in all_files],
+            f"List of {len(all_files)} files found in repository"
+        )
         
         # Step 3: Create chunks
         chunks = self._create_simple_chunks(all_files)
         logger.info(f"Created {len(chunks)} chunks")
         
+        # Track chunk summary
+        context_tracker.store_variable(
+            "chunk_summary",
+            {
+                "num_chunks": len(chunks),
+                "chunk_sizes": [len(chunk) for chunk in chunks],
+                "total_files": len(all_files)
+            },
+            "Summary of file chunking for analysis"
+        )
+        
         # Step 4: Ask TODO relation question for each chunk
         chunk_responses = []
         for i, chunk in enumerate(chunks, 1):
             logger.info(f"Analyzing chunk {i}/{len(chunks)} against TODO")
+            
+            # Track this chunk's content
+            context_tracker.store_variable(
+                f"chunk_{i}_files",
+                [f['path'] for f in chunk],
+                f"Files in chunk {i}"
+            )
+            
             response = self._ask_todo_relation(todo_content, chunk, i, len(chunks))
             chunk_responses.append(response)
+            
+            # Track chunk response
+            context_tracker.store_variable(
+                f"chunk_{i}_analysis",
+                response,
+                f"AI analysis of chunk {i} against TODO"
+            )
         
         # Step 5: Summarize all responses
         summary = self._summarize_responses(chunk_responses, todo_content)
         
+        # Track final summary
+        context_tracker.store_variable(
+            "final_summary",
+            summary,
+            "Final synthesized analysis of all chunks"
+        )
+        
         # Step 6: Get file tree structure
         file_tree = self._get_file_tree(repo_path)
+        
+        # Track file tree
+        context_tracker.store_variable(
+            "file_tree",
+            file_tree,
+            "Repository file structure"
+        )
         
         return {
             "todo_content": todo_content,
@@ -143,6 +200,13 @@ class TodoAnalyzer:
         
         context = "\n".join(context_parts)
         
+        # Track the context being analyzed
+        context_tracker.store_variable(
+            f"chunk_{chunk_num}_context",
+            context,
+            f"Code context for chunk {chunk_num}"
+        )
+        
         prompt = f"""TODO.md contents:
 {todo_content[:1500]}
 
@@ -167,6 +231,13 @@ Be specific about file names and what needs to be done."""
     def _summarize_responses(self, responses: List[str], todo_content: str) -> str:
         """Summarize all chunk responses"""
         combined = "\n\n=== CHUNK RESPONSE ===\n".join(responses)
+        
+        # Track combined responses
+        context_tracker.store_variable(
+            "all_chunk_responses",
+            combined,
+            "All chunk analysis responses combined"
+        )
         
         prompt = f"""Summarize the following analysis of how different code chunks relate to the TODO:
 
