@@ -1,10 +1,11 @@
 """
 Context Tracker for GitLlama
-Tracks all context variables used in AI prompts for full transparency
+Tracks all context variables and their usage in prompts
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+import re
+from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
 import json
@@ -31,6 +32,8 @@ class ContextTracker:
             self.stages: Dict[str, Dict[str, Any]] = {}
             self.current_stage: Optional[str] = None
             self.stage_order: List[str] = []
+            # Track the current prompt being built
+            self.current_prompt_variables: Dict[str, Any] = {}
             ContextTracker._initialized = True
             logger.info("📝 Context Tracker initialized")
     
@@ -42,19 +45,16 @@ class ContextTracker:
                 "timestamp": datetime.now().isoformat(),
                 "variables": {},
                 "prompts": [],
-                "responses": []
+                "responses": [],
+                "prompt_response_pairs": []  # New: paired prompts and responses
             }
             self.stage_order.append(stage_name)
+        # Clear current prompt variables for new stage
+        self.current_prompt_variables.clear()
         logger.debug(f"📍 Started tracking stage: {stage_name}")
     
     def store_variable(self, var_name: str, content: Any, description: str = ""):
-        """Store a context variable for the current stage
-        
-        Args:
-            var_name: Name of the variable
-            content: The actual content (will be converted to string)
-            description: Optional description of what this variable is for
-        """
+        """Store a context variable for the current stage"""
         if not self.current_stage:
             logger.warning("No active stage - starting default stage")
             self.start_stage("default")
@@ -68,7 +68,7 @@ class ContextTracker:
             content_str = str(content)
         
         # Store with metadata
-        self.stages[self.current_stage]["variables"][var_name] = {
+        var_data = {
             "content": content_str,
             "description": description,
             "timestamp": datetime.now().isoformat(),
@@ -76,48 +76,129 @@ class ContextTracker:
             "size": len(content_str)
         }
         
+        self.stages[self.current_stage]["variables"][var_name] = var_data
+        
+        # Also store in current prompt variables for template tracking
+        self.current_prompt_variables[var_name] = content_str
+        
         logger.debug(f"📦 Stored variable '{var_name}' ({len(content_str)} chars) in stage '{self.current_stage}'")
     
-    def store_prompt(self, prompt: str, context: str = "", question: str = ""):
-        """Store a complete prompt that was sent to AI
+    def store_prompt_and_response(self, prompt: str, response: str, 
+                                 template: Optional[str] = None,
+                                 variable_map: Optional[Dict[str, str]] = None):
+        """Store a prompt with its response and variable mapping
         
         Args:
-            prompt: The main prompt text
-            context: Any context that was included
-            question: The specific question if applicable
+            prompt: The final prompt sent to AI
+            response: The AI's response
+            template: Optional template showing where variables go
+            variable_map: Optional explicit mapping of variables used
         """
         if not self.current_stage:
             self.start_stage("default")
         
-        prompt_data = {
+        # If no variable map provided, use current prompt variables
+        if variable_map is None:
+            variable_map = self.current_prompt_variables.copy()
+        
+        # Try to identify variables in the prompt if template not provided
+        if not template:
+            template, variable_map = self._extract_template_from_prompt(prompt, variable_map)
+        
+        pair_data = {
             "timestamp": datetime.now().isoformat(),
             "prompt": prompt,
-            "context": context,
-            "question": question,
-            "combined_size": len(prompt) + len(context) + len(question)
+            "response": response,
+            "template": template,
+            "variables_used": variable_map,
+            "prompt_size": len(prompt),
+            "response_size": len(response)
         }
         
-        self.stages[self.current_stage]["prompts"].append(prompt_data)
-        logger.debug(f"📝 Stored prompt ({len(prompt)} chars) in stage '{self.current_stage}'")
-    
-    def store_response(self, response: str, response_type: str = "open"):
-        """Store an AI response
+        self.stages[self.current_stage]["prompt_response_pairs"].append(pair_data)
         
-        Args:
-            response: The AI's response
-            response_type: Type of response (choice, open, etc.)
+        # Also store in old format for backward compatibility
+        self.stages[self.current_stage]["prompts"].append({
+            "timestamp": datetime.now().isoformat(),
+            "prompt": prompt,
+            "combined_size": len(prompt)
+        })
+        self.stages[self.current_stage]["responses"].append({
+            "timestamp": datetime.now().isoformat(),
+            "response": response,
+            "type": "ai_response",
+            "size": len(response)
+        })
+        
+        logger.debug(f"📝 Stored prompt-response pair ({len(prompt)}/{len(response)} chars) in stage '{self.current_stage}'")
+    
+    def _extract_template_from_prompt(self, prompt: str, variables: Dict[str, str]) -> Tuple[str, Dict[str, str]]:
+        """Try to extract a template from a prompt by identifying variable content
+        
+        Returns:
+            Tuple of (template_with_placeholders, detected_variables)
         """
+        template = prompt
+        detected_vars = {}
+        
+        # Sort variables by length (longest first) to avoid partial replacements
+        sorted_vars = sorted(variables.items(), key=lambda x: len(x[1]), reverse=True)
+        
+        for var_name, var_content in sorted_vars:
+            if var_content and len(var_content) > 10:  # Only match substantial content
+                # Escape special regex characters
+                escaped_content = re.escape(var_content[:500])  # Limit to first 500 chars for matching
+                
+                # Try to find this content in the prompt
+                if escaped_content[:100] in re.escape(prompt):
+                    # Replace with placeholder
+                    template = template.replace(var_content, f"{{{{ {var_name} }}}}")
+                    detected_vars[var_name] = var_content
+        
+        return template, detected_vars
+    
+    def store_prompt(self, prompt: str, context: str = "", question: str = ""):
+        """Store a complete prompt (backward compatibility)"""
         if not self.current_stage:
             self.start_stage("default")
         
-        response_data = {
-            "timestamp": datetime.now().isoformat(),
-            "response": response,
-            "type": response_type,
-            "size": len(response)
-        }
+        # Build variable map from context and question
+        variable_map = {}
+        if context:
+            variable_map["context"] = context
+        if question:
+            variable_map["question"] = question
         
-        self.stages[self.current_stage]["responses"].append(response_data)
+        # Store just the prompt for now (response will be added later)
+        self._last_prompt = prompt
+        self._last_variable_map = variable_map
+    
+    def store_response(self, response: str, response_type: str = "open"):
+        """Store an AI response and pair it with the last prompt"""
+        if not self.current_stage:
+            self.start_stage("default")
+        
+        # If we have a pending prompt, create a pair
+        if hasattr(self, '_last_prompt'):
+            self.store_prompt_and_response(
+                self._last_prompt,
+                response,
+                variable_map=getattr(self, '_last_variable_map', {})
+            )
+            # Clear the pending prompt
+            delattr(self, '_last_prompt')
+            if hasattr(self, '_last_variable_map'):
+                delattr(self, '_last_variable_map')
+        else:
+            # Store response alone (backward compatibility)
+            response_data = {
+                "timestamp": datetime.now().isoformat(),
+                "response": response,
+                "type": response_type,
+                "size": len(response)
+            }
+            self.stages[self.current_stage]["responses"].append(response_data)
+        
         logger.debug(f"💬 Stored {response_type} response ({len(response)} chars) in stage '{self.current_stage}'")
     
     def get_stage_summary(self, stage_name: str) -> Dict[str, Any]:
@@ -132,29 +213,24 @@ class ContextTracker:
             "num_variables": len(stage["variables"]),
             "num_prompts": len(stage["prompts"]),
             "num_responses": len(stage["responses"]),
+            "num_pairs": len(stage.get("prompt_response_pairs", [])),
             "total_variable_size": sum(v["size"] for v in stage["variables"].values()),
             "variables": stage["variables"],
             "prompts": stage["prompts"],
-            "responses": stage["responses"]
+            "responses": stage["responses"],
+            "prompt_response_pairs": stage.get("prompt_response_pairs", [])
         }
     
     def get_all_stages(self) -> List[Dict[str, Any]]:
         """Get all stages in order with their data"""
         return [self.get_stage_summary(stage) for stage in self.stage_order]
     
-    def get_variable_across_stages(self, var_name: str) -> Dict[str, Any]:
-        """Track how a variable changed across stages"""
-        history = {}
-        for stage_name in self.stage_order:
-            if var_name in self.stages[stage_name]["variables"]:
-                history[stage_name] = self.stages[stage_name]["variables"][var_name]
-        return history
-    
     def get_total_stats(self) -> Dict[str, Any]:
         """Get overall statistics"""
         total_vars = sum(len(s["variables"]) for s in self.stages.values())
         total_prompts = sum(len(s["prompts"]) for s in self.stages.values())
         total_responses = sum(len(s["responses"]) for s in self.stages.values())
+        total_pairs = sum(len(s.get("prompt_response_pairs", [])) for s in self.stages.values())
         total_size = sum(
             sum(v["size"] for v in s["variables"].values())
             for s in self.stages.values()
@@ -165,6 +241,7 @@ class ContextTracker:
             "total_variables": total_vars,
             "total_prompts": total_prompts,
             "total_responses": total_responses,
+            "total_pairs": total_pairs,
             "total_data_size": total_size,
             "stages": list(self.stage_order)
         }
@@ -183,6 +260,7 @@ class ContextTracker:
         self.stages.clear()
         self.current_stage = None
         self.stage_order.clear()
+        self.current_prompt_variables.clear()
         logger.info("🔄 Context tracker reset")
 
 

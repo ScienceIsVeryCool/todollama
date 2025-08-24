@@ -1,10 +1,11 @@
 """
 Enhanced Report Generator for GitLlama
-Displays all tracked context variables beautifully
+Shows prompts with color-coded variables and side-by-side responses
 """
 
 import logging
 import webbrowser
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -13,10 +14,6 @@ from .. import __version__
 
 try:
     from jinja2 import Template
-    from pygments import highlight
-    from pygments.lexers import get_lexer_by_name, guess_lexer, JsonLexer, PythonLexer, TextLexer
-    from pygments.formatters import HtmlFormatter
-    from pygments.util import ClassNotFound
     REPORT_DEPENDENCIES_AVAILABLE = True
 except ImportError as e:
     REPORT_DEPENDENCIES_AVAILABLE = False
@@ -27,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReportGenerator:
-    """Generates professional HTML reports with full context visibility"""
+    """Generates professional HTML reports with color-coded context visibility"""
     
     def __init__(self, repo_url: str, output_dir: str = "gitllama_reports"):
         self.repo_url = repo_url
@@ -70,35 +67,80 @@ class ReportGenerator:
             "total_tokens": total_tokens
         }
     
-    def add_file_operation(self, operation: str, file_path: str, reason: str, content: str = ""):
-        """Add a file operation"""
-        self.file_operations.append({
-            "timestamp": datetime.now(),
-            "operation": operation,
-            "file_path": file_path,
-            "reason": reason,
-            "content": content
-        })
-    
-    def _highlight_variable_content(self, content: str, var_type: str = "text") -> str:
-        """Apply syntax highlighting to variable content based on type"""
-        if not REPORT_DEPENDENCIES_AVAILABLE:
-            return f'<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">{self._escape_html(content)}</pre>'
+    def _generate_color_for_variable(self, var_name: str) -> str:
+        """Generate a consistent color for a variable name"""
+        # Use hash to generate consistent colors
+        hash_val = hashlib.md5(var_name.encode()).hexdigest()
         
-        try:
-            # Determine lexer based on content type
-            if var_type == "dict" or var_type == "list" or content.strip().startswith('{') or content.strip().startswith('['):
-                lexer = JsonLexer()
-            elif var_type == "python" or '.py' in content[:100]:
-                lexer = PythonLexer()
-            else:
-                lexer = TextLexer()
-            
-            formatter = HtmlFormatter(style='github', cssclass='highlight', noclasses=True)
-            return highlight(content, lexer, formatter)
-        except Exception as e:
-            logger.debug(f"Syntax highlighting failed: {e}")
-            return f'<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">{self._escape_html(content)}</pre>'
+        # Define a palette of distinct colors
+        colors = [
+            '#e74c3c',  # Red
+            '#3498db',  # Blue
+            '#2ecc71',  # Green
+            '#f39c12',  # Orange
+            '#9b59b6',  # Purple
+            '#1abc9c',  # Turquoise
+            '#e67e22',  # Carrot
+            '#16a085',  # Green Sea
+            '#8e44ad',  # Wisteria
+            '#d35400',  # Pumpkin
+            '#27ae60',  # Nephritis
+            '#2980b9',  # Belize Blue
+            '#c0392b',  # Pomegranate
+            '#7f8c8d',  # Asbestos
+            '#34495e',  # Wet Asphalt
+        ]
+        
+        # Pick color based on hash
+        color_index = int(hash_val[:2], 16) % len(colors)
+        return colors[color_index]
+    
+    def _format_prompt_with_variables(self, prompt: str, variables: Dict[str, str]) -> str:
+        """Format a prompt with color-coded variable highlights"""
+        if not variables:
+            return self._escape_html(prompt)
+        
+        formatted = prompt
+        replacements = []
+        
+        # Sort variables by length (longest first) to avoid partial replacements
+        sorted_vars = sorted(variables.items(), key=lambda x: len(x[1]) if x[1] else 0, reverse=True)
+        
+        for var_name, var_content in sorted_vars:
+            if var_content and var_content in prompt:
+                color = self._generate_color_for_variable(var_name)
+                # Create a unique placeholder to avoid re-replacement
+                placeholder = f"___VAR_{var_name}_{hash(var_content)}___"
+                formatted = formatted.replace(var_content, placeholder)
+                
+                # Escape the content for HTML
+                escaped_content = self._escape_html(var_content)
+                
+                # Create the colored span with tooltip
+                replacement = f'''<span class="variable-highlight" 
+                    style="background-color: {color}20; border-bottom: 2px solid {color}; 
+                           padding: 2px 4px; border-radius: 3px; position: relative; cursor: help;"
+                    data-variable="{var_name}"
+                    title="{var_name}">
+                    {escaped_content}
+                    <span class="variable-label" style="position: absolute; top: -20px; left: 0; 
+                          background: {color}; color: white; padding: 2px 6px; 
+                          border-radius: 3px; font-size: 0.7rem; white-space: nowrap;
+                          opacity: 0; transition: opacity 0.2s; pointer-events: none;">
+                        {var_name}
+                    </span>
+                </span>'''
+                
+                replacements.append((placeholder, replacement))
+        
+        # Escape any remaining text
+        formatted = self._escape_html(formatted)
+        
+        # Now replace all placeholders with formatted HTML
+        for placeholder, replacement in replacements:
+            formatted = formatted.replace(placeholder, replacement)
+        
+        return formatted
     
     def _escape_html(self, text: str) -> str:
         """Escape HTML characters"""
@@ -109,12 +151,12 @@ class ReportGenerator:
                    .replace("'", '&#x27;'))
     
     def generate_report(self, auto_open: bool = True) -> Path:
-        """Generate the enhanced HTML report with context tracking"""
+        """Generate the enhanced HTML report with color-coded variables"""
         if not REPORT_DEPENDENCIES_AVAILABLE:
-            logger.error("Cannot generate report: missing dependencies (jinja2, pygments)")
+            logger.error("Cannot generate report: missing dependencies (jinja2)")
             return self._generate_fallback_report()
         
-        logger.info("Generating enhanced HTML report with context tracking...")
+        logger.info("Generating enhanced HTML report with color-coded variables...")
         
         # Get all tracked context data
         context_data = context_tracker.export_for_report()
@@ -125,9 +167,11 @@ class ReportGenerator:
             "generation_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "executive_summary": self.executive_summary,
             "context_tracking": context_data,
-            "file_operations": self.file_operations,
             "metrics": self.metrics,
-            "gitllama_version": __version__
+            "gitllama_version": __version__,
+            "format_prompt": self._format_prompt_with_variables,
+            "generate_color": self._generate_color_for_variable,
+            "escape_html": self._escape_html
         }
         
         # Generate HTML
@@ -158,16 +202,12 @@ class ReportGenerator:
         return html_path
     
     def _render_enhanced_html_template(self, data: Dict[str, Any]) -> str:
-        """Render the enhanced HTML template with context tracking"""
+        """Render the enhanced HTML template"""
         template = Template(self._get_enhanced_html_template())
-        
-        # Add highlighting function to template context
-        data['highlight_content'] = self._highlight_variable_content
-        
         return template.render(**data)
     
     def _get_enhanced_html_template(self) -> str:
-        """Get the enhanced HTML template with beautiful context display"""
+        """Get the enhanced HTML template with color-coded variables"""
         return '''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -180,7 +220,7 @@ class ReportGenerator:
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6; color: #333; background: #f5f7fa;
         }
-        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
         
         /* Header */
         .header { 
@@ -201,17 +241,17 @@ class ReportGenerator:
             padding-bottom: 0.5rem; margin-bottom: 1.5rem; font-size: 1.8rem;
         }
         
-        /* Context tracking stats */
+        /* Stats */
         .context-stats {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem; margin-bottom: 2rem;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem; margin-bottom: 2rem;
         }
         .stat-card {
-            background: #f8fafc; padding: 1.5rem; border-radius: 8px;
+            background: #f8fafc; padding: 1rem; border-radius: 8px;
             border-left: 4px solid #667eea; text-align: center;
         }
-        .stat-value { font-size: 2rem; font-weight: bold; color: #667eea; }
-        .stat-label { color: #64748b; text-transform: uppercase; font-size: 0.85rem; }
+        .stat-value { font-size: 1.8rem; font-weight: bold; color: #667eea; }
+        .stat-label { color: #64748b; text-transform: uppercase; font-size: 0.8rem; }
         
         /* Stage navigation */
         .stage-nav {
@@ -239,84 +279,120 @@ class ReportGenerator:
             to { opacity: 1; transform: translateY(0); }
         }
         
-        /* Variable display */
-        .variable-card {
-            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
-            margin-bottom: 1.5rem; overflow: hidden;
+        /* Prompt-Response Pairs */
+        .prompt-response-pair {
+            background: white; border: 1px solid #e2e8f0; border-radius: 12px;
+            margin-bottom: 2rem; overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
-        .variable-header {
-            background: white; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0;
+        .pair-header {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            padding: 1rem 1.5rem; border-bottom: 2px solid #e2e8f0;
             display: flex; justify-content: space-between; align-items: center;
         }
-        .variable-name {
+        .pair-number {
             font-weight: 700; color: #1a202c; font-size: 1.1rem;
-            font-family: 'Monaco', monospace;
         }
-        .variable-meta {
+        .pair-meta {
             display: flex; gap: 1rem; align-items: center;
-        }
-        .variable-type {
-            background: #dbeafe; color: #1e40af; padding: 0.25rem 0.75rem;
-            border-radius: 20px; font-size: 0.8rem; font-weight: 600;
-        }
-        .variable-size {
-            color: #64748b; font-size: 0.9rem;
-        }
-        .variable-description {
-            padding: 0.75rem 1.5rem; background: #f1f5f9; color: #475569;
-            font-style: italic; font-size: 0.95rem;
-        }
-        .variable-content {
-            padding: 1.5rem; max-height: 500px; overflow-y: auto;
-            background: white;
-        }
-        .variable-content pre {
-            margin: 0; font-size: 0.9rem; line-height: 1.5;
-            background: #f8f8f8; padding: 1rem; border-radius: 6px;
-            overflow-x: auto;
+            font-size: 0.9rem; color: #64748b;
         }
         
-        /* Prompt display */
-        .prompt-card {
+        /* Variable legend */
+        .variable-legend {
+            background: #f8fafc; padding: 1rem; border-radius: 8px;
+            margin-bottom: 1rem; border: 1px solid #e2e8f0;
+        }
+        .variable-legend h4 {
+            margin-bottom: 0.5rem; color: #374151; font-size: 0.9rem;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .legend-items {
+            display: flex; flex-wrap: wrap; gap: 0.75rem;
+        }
+        .legend-item {
+            display: flex; align-items: center; gap: 0.5rem;
+            padding: 0.25rem 0.75rem; background: white;
+            border-radius: 20px; font-size: 0.85rem;
+            border: 1px solid #e2e8f0;
+        }
+        .legend-color {
+            width: 16px; height: 16px; border-radius: 3px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        /* Prompt and Response containers */
+        .pair-content {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+        }
+        
+        .prompt-container, .response-container {
+            padding: 1.5rem; position: relative;
+        }
+        
+        .prompt-container {
             background: linear-gradient(135deg, #f0f4ff 0%, #e8ecff 100%);
-            border: 1px solid #c7d2fe; border-radius: 8px;
-            margin-bottom: 1rem; padding: 1.5rem;
-        }
-        .prompt-header {
-            font-weight: 600; color: #4338ca; margin-bottom: 0.5rem;
-            display: flex; align-items: center; gap: 0.5rem;
-        }
-        .prompt-content {
-            background: white; padding: 1rem; border-radius: 6px;
-            font-family: 'Monaco', monospace; font-size: 0.9rem;
-            white-space: pre-wrap; word-wrap: break-word;
-            max-height: 300px; overflow-y: auto;
+            border-right: 2px solid #e2e8f0;
         }
         
-        /* Response display */
-        .response-card {
+        .response-container {
             background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-            border: 1px solid #86efac; border-radius: 8px;
-            margin-bottom: 1rem; padding: 1.5rem;
-        }
-        .response-header {
-            font-weight: 600; color: #166534; margin-bottom: 0.5rem;
-            display: flex; align-items: center; gap: 0.5rem;
-        }
-        .response-content {
-            background: white; padding: 1rem; border-radius: 6px;
-            font-family: 'Monaco', monospace; font-size: 0.9rem;
-            white-space: pre-wrap; word-wrap: break-word;
-            max-height: 300px; overflow-y: auto;
         }
         
-        /* Toggle buttons */
-        .toggle-btn {
-            background: #667eea; color: white; border: none;
-            padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;
-            font-weight: 600; transition: background 0.2s;
+        .container-header {
+            font-weight: 700; color: #374151; margin-bottom: 1rem;
+            display: flex; align-items: center; gap: 0.5rem;
+            font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;
         }
-        .toggle-btn:hover { background: #5a67d8; }
+        
+        .prompt-content, .response-content {
+            background: white; padding: 1rem; border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace; font-size: 0.85rem;
+            line-height: 1.6; white-space: pre-wrap; word-wrap: break-word;
+            max-height: 600px; overflow-y: auto;
+            border: 1px solid rgba(0,0,0,0.05);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+        
+        /* Variable highlighting */
+        .variable-highlight {
+            position: relative; display: inline-block;
+            transition: all 0.2s;
+        }
+        .variable-highlight:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .variable-highlight:hover .variable-label {
+            opacity: 1 !important;
+        }
+        
+        /* Expand/Collapse buttons */
+        .expand-btn {
+            position: absolute; top: 1rem; right: 1rem;
+            background: rgba(255,255,255,0.8); border: 1px solid #e2e8f0;
+            padding: 0.25rem 0.5rem; border-radius: 4px;
+            cursor: pointer; font-size: 0.75rem; font-weight: 600;
+            color: #4b5563; transition: all 0.2s;
+        }
+        .expand-btn:hover {
+            background: white; border-color: #667eea; color: #667eea;
+        }
+        
+        /* Copy button */
+        .copy-btn {
+            position: absolute; bottom: 1rem; right: 1rem;
+            background: rgba(255,255,255,0.9); border: 1px solid #e2e8f0;
+            padding: 0.25rem 0.75rem; border-radius: 4px;
+            cursor: pointer; font-size: 0.75rem; font-weight: 600;
+            color: #4b5563; transition: all 0.2s;
+        }
+        .copy-btn:hover {
+            background: white; border-color: #667eea; color: #667eea;
+        }
+        .copy-btn.copied {
+            background: #10b981; color: white; border-color: #10b981;
+        }
         
         /* Footer */
         .footer { 
@@ -324,12 +400,22 @@ class ReportGenerator:
             margin-top: 3rem;
         }
         
-        /* Syntax highlighting overrides */
-        .highlight { background: transparent !important; }
-        .highlight pre { 
-            background: #f8f8f8 !important; 
-            padding: 1rem !important;
-            border-radius: 6px !important;
+        /* Scrollbar styling */
+        .prompt-content::-webkit-scrollbar,
+        .response-content::-webkit-scrollbar {
+            width: 8px; height: 8px;
+        }
+        .prompt-content::-webkit-scrollbar-track,
+        .response-content::-webkit-scrollbar-track {
+            background: #f1f5f9; border-radius: 4px;
+        }
+        .prompt-content::-webkit-scrollbar-thumb,
+        .response-content::-webkit-scrollbar-thumb {
+            background: #cbd5e1; border-radius: 4px;
+        }
+        .prompt-content::-webkit-scrollbar-thumb:hover,
+        .response-content::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
         }
     </style>
 </head>
@@ -337,7 +423,7 @@ class ReportGenerator:
     <div class="container">
         <div class="header">
             <h1>🦙 GitLlama Context Report</h1>
-            <p>Complete AI Context Tracking • {{ generation_time }}</p>
+            <p>AI Prompts with Color-Coded Variables • {{ generation_time }}</p>
             <p>Repository: {{ executive_summary.repo_url }}</p>
             <div style="margin-top: 0.5rem; opacity: 0.8; font-size: 0.9rem;">
                 <span style="background: rgba(255,255,255,0.2); padding: 0.25rem 0.5rem; border-radius: 4px;">
@@ -352,38 +438,34 @@ class ReportGenerator:
             <div class="context-stats">
                 <div class="stat-card">
                     <div class="stat-value">{{ context_tracking.stats.num_stages }}</div>
-                    <div class="stat-label">Execution Stages</div>
+                    <div class="stat-label">Stages</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">{{ context_tracking.stats.total_variables }}</div>
-                    <div class="stat-label">Context Variables</div>
+                    <div class="stat-label">Variables</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">{{ context_tracking.stats.total_prompts }}</div>
-                    <div class="stat-label">AI Prompts</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{{ context_tracking.stats.total_responses }}</div>
-                    <div class="stat-label">AI Responses</div>
+                    <div class="stat-value">{{ context_tracking.stats.total_pairs }}</div>
+                    <div class="stat-label">AI Exchanges</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">{{ (context_tracking.stats.total_data_size / 1024)|round(1) }}KB</div>
-                    <div class="stat-label">Total Data Size</div>
+                    <div class="stat-label">Data Size</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">{{ executive_summary.execution_time|round(1) }}s</div>
-                    <div class="stat-label">Execution Time</div>
+                    <div class="stat-label">Runtime</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{% if executive_summary.success %}✅{% else %}❌{% endif %}</div>
+                    <div class="stat-label">Status</div>
                 </div>
             </div>
-            
-            <p><strong>Branch:</strong> {{ executive_summary.branch_selected }}</p>
-            <p><strong>Files Modified:</strong> {{ executive_summary.files_modified|length }}</p>
-            <p><strong>Status:</strong> {% if executive_summary.success %}✅ Success{% else %}❌ Failed{% endif %}</p>
         </div>
 
-        <!-- Context Tracking Details -->
+        <!-- AI Context Exchanges -->
         <div class="section">
-            <h2>🧠 AI Context Tracking</h2>
+            <h2>🧠 AI Context Exchanges</h2>
             
             <!-- Stage Navigation -->
             <div class="stage-nav">
@@ -392,7 +474,7 @@ class ReportGenerator:
                      onclick="showStage('{{ stage.stage_name }}', this)">
                     {{ stage.stage_name }}
                     <span style="background: rgba(102,126,234,0.2); padding: 2px 6px; border-radius: 4px; margin-left: 4px; font-size: 0.8rem;">
-                        {{ stage.num_variables }}
+                        {{ stage.num_pairs }}
                     </span>
                 </div>
                 {% endfor %}
@@ -404,72 +486,72 @@ class ReportGenerator:
                 <h3 style="margin-bottom: 1.5rem; color: #374151;">
                     📍 Stage: {{ stage.stage_name }}
                     <span style="font-size: 0.9rem; color: #6b7280; font-weight: normal; margin-left: 1rem;">
-                        {{ stage.timestamp }}
+                        {{ stage.num_pairs }} exchanges • {{ stage.num_variables }} variables
                     </span>
                 </h3>
                 
-                <!-- Variables in this stage -->
+                <!-- Variable Legend for this stage -->
                 {% if stage.variables %}
-                <h4 style="margin: 1.5rem 0 1rem 0; color: #4b5563;">📦 Context Variables ({{ stage.num_variables }})</h4>
-                {% for var_name, var_data in stage.variables.items() %}
-                <div class="variable-card">
-                    <div class="variable-header">
-                        <div class="variable-name">{{ var_name }}</div>
-                        <div class="variable-meta">
-                            <span class="variable-type">{{ var_data.type }}</span>
-                            <span class="variable-size">{{ var_data.size }} chars</span>
+                <div class="variable-legend">
+                    <h4>📦 Variables Used in This Stage</h4>
+                    <div class="legend-items">
+                        {% for var_name, var_data in stage.variables.items() %}
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: {{ generate_color(var_name) }};"></div>
+                            <span style="font-weight: 600;">{{ var_name }}</span>
+                            <span style="color: #6b7280;">({{ var_data.size }} chars)</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- Prompt-Response Pairs -->
+                {% for pair in stage.prompt_response_pairs %}
+                <div class="prompt-response-pair">
+                    <div class="pair-header">
+                        <div class="pair-number">Exchange #{{ loop.index }}</div>
+                        <div class="pair-meta">
+                            <span>⏱️ {{ pair.timestamp.split('T')[1].split('.')[0] }}</span>
+                            <span>📝 {{ pair.prompt_size }} chars prompt</span>
+                            <span>💬 {{ pair.response_size }} chars response</span>
                         </div>
                     </div>
-                    {% if var_data.description %}
-                    <div class="variable-description">{{ var_data.description }}</div>
-                    {% endif %}
-                    <div class="variable-content">
-                        {{ highlight_content(var_data.content, var_data.type)|safe }}
+                    
+                    <div class="pair-content">
+                        <!-- Prompt Side -->
+                        <div class="prompt-container">
+                            <div class="container-header">
+                                <span>🤖</span> PROMPT TO AI
+                            </div>
+                            <div class="prompt-content" id="prompt-{{ stage.stage_name }}-{{ loop.index }}">{{ format_prompt(pair.prompt, pair.variables_used)|safe }}</div>
+                            <button class="copy-btn" onclick="copyText('prompt-{{ stage.stage_name }}-{{ loop.index }}', this)">
+                                📋 Copy
+                            </button>
+                        </div>
+                        
+                        <!-- Response Side -->
+                        <div class="response-container">
+                            <div class="container-header">
+                                <span>✨</span> AI RESPONSE
+                            </div>
+                            <div class="response-content" id="response-{{ stage.stage_name }}-{{ loop.index }}">{{ escape_html(pair.response) }}</div>
+                            <button class="copy-btn" onclick="copyText('response-{{ stage.stage_name }}-{{ loop.index }}', this)">
+                                📋 Copy
+                            </button>
+                        </div>
                     </div>
                 </div>
                 {% endfor %}
-                {% endif %}
                 
-                <!-- Prompts in this stage -->
-                {% if stage.prompts %}
-                <h4 style="margin: 2rem 0 1rem 0; color: #4b5563;">📝 AI Prompts ({{ stage.num_prompts }})</h4>
-                {% for prompt in stage.prompts %}
-                <div class="prompt-card">
-                    <div class="prompt-header">
-                        <span>🤖</span>
-                        Prompt #{{ loop.index }}
-                        <span style="margin-left: auto; font-size: 0.9rem; color: #6b7280;">
-                            {{ prompt.combined_size }} chars
-                        </span>
-                    </div>
-                    <div class="prompt-content">{{ prompt.prompt|truncate(2000) }}</div>
-                    {% if prompt.context %}
-                    <details style="margin-top: 0.5rem;">
-                        <summary style="cursor: pointer; color: #4338ca; font-weight: 600;">
-                            View Context ({{ prompt.context|length }} chars)
-                        </summary>
-                        <div class="prompt-content" style="margin-top: 0.5rem;">{{ prompt.context|truncate(2000) }}</div>
-                    </details>
+                <!-- Fallback for stages without pairs -->
+                {% if not stage.prompt_response_pairs %}
+                <div style="padding: 2rem; text-align: center; color: #6b7280;">
+                    <p>No prompt-response pairs recorded for this stage.</p>
+                    {% if stage.prompts %}
+                    <p style="margin-top: 0.5rem;">{{ stage.num_prompts }} prompts and {{ stage.num_responses }} responses were recorded separately.</p>
                     {% endif %}
                 </div>
-                {% endfor %}
-                {% endif %}
-                
-                <!-- Responses in this stage -->
-                {% if stage.responses %}
-                <h4 style="margin: 2rem 0 1rem 0; color: #4b5563;">💬 AI Responses ({{ stage.num_responses }})</h4>
-                {% for response in stage.responses %}
-                <div class="response-card">
-                    <div class="response-header">
-                        <span>✨</span>
-                        Response #{{ loop.index }} ({{ response.type }})
-                        <span style="margin-left: auto; font-size: 0.9rem; color: #6b7280;">
-                            {{ response.size }} chars
-                        </span>
-                    </div>
-                    <div class="response-content">{{ response.response|truncate(2000) }}</div>
-                </div>
-                {% endfor %}
                 {% endif %}
             </div>
             {% endfor %}
@@ -477,7 +559,7 @@ class ReportGenerator:
 
         <div class="footer">
             <p>Generated by GitLlama v{{ gitllama_version }} • {{ generation_time }}</p>
-            <p>🦙 Complete Context Transparency</p>
+            <p>🦙 Complete Context Transparency with Color-Coded Variables</p>
         </div>
     </div>
 
@@ -497,6 +579,37 @@ class ReportGenerator:
             document.getElementById('stage-' + stageName).classList.add('active');
             tabElement.classList.add('active');
         }
+        
+        function copyText(elementId, button) {
+            const element = document.getElementById(elementId);
+            const text = element.innerText || element.textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                // Change button to show success
+                const originalText = button.innerHTML;
+                button.innerHTML = '✅ Copied!';
+                button.classList.add('copied');
+                
+                // Reset after 2 seconds
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+        
+        function toggleExpand(elementId, button) {
+            const element = document.getElementById(elementId);
+            if (element.style.maxHeight === 'none') {
+                element.style.maxHeight = '600px';
+                button.textContent = 'Expand';
+            } else {
+                element.style.maxHeight = 'none';
+                button.textContent = 'Collapse';
+            }
+        }
     </script>
 </body>
 </html>'''
@@ -504,23 +617,12 @@ class ReportGenerator:
     def _generate_fallback_report(self) -> Path:
         """Generate simple text report when dependencies are missing"""
         lines = [
-            "GitLlama Context Tracking Report",
+            "GitLlama Context Report",
             "=" * 50,
             f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"Repository: {self.repo_url}",
             "",
-            "Context Tracking Summary:",
+            "Install jinja2 for full HTML report: pip install jinja2",
         ]
-        
-        # Add context tracking data
-        context_data = context_tracker.export_for_report()
-        for stage in context_data['stages']:
-            lines.append(f"\nStage: {stage['stage_name']}")
-            lines.append(f"  Variables: {stage['num_variables']}")
-            lines.append(f"  Prompts: {stage['num_prompts']}")
-            lines.append(f"  Responses: {stage['num_responses']}")
-        
-        lines.append("\nInstall jinja2 and pygments for full HTML report")
         
         txt_path = self.output_dir / f"report_{self.timestamp}.txt"
         with open(txt_path, 'w') as f:

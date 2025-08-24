@@ -1,10 +1,10 @@
 """
 AI Query Interface for GitLlama
-With integrated context tracking for full transparency
+With integrated prompt-response pair tracking
 """
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
 from dataclasses import dataclass
 from .client import OllamaClient
 from ..utils.metrics import context_manager
@@ -56,18 +56,29 @@ class AIQuery:
         """
         Ask AI to pick from options with full context tracking.
         """
+        # Build a dictionary of all variables being used
+        variables_used = {}
+        
         # Track the input variables
-        context_tracker.store_variable(
-            f"{context_name}_question",
-            question,
-            "Multiple choice question"
-        )
-        context_tracker.store_variable(
-            f"{context_name}_options",
-            options,
-            "Available options for selection"
-        )
+        if question:
+            variables_used["question"] = question
+            context_tracker.store_variable(
+                f"{context_name}_question",
+                question,
+                "Multiple choice question"
+            )
+        
+        if options:
+            options_str = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
+            variables_used["options"] = options_str
+            context_tracker.store_variable(
+                f"{context_name}_options",
+                options,
+                "Available options for selection"
+            )
+        
         if context:
+            variables_used["context"] = context
             context_tracker.store_variable(
                 f"{context_name}_context",
                 context,
@@ -92,6 +103,10 @@ class AIQuery:
                 result = self.compressor.compress_context(original_context, question, max_rounds=1)
                 compression_rounds = result.compression_rounds
                 
+                # Update the context in variables_used
+                variables_used["context"] = context
+                variables_used["original_context"] = original_context
+                
                 # Track the compressed context
                 context_tracker.store_variable(
                     f"{context_name}_compressed_context",
@@ -101,9 +116,6 @@ class AIQuery:
         
         # Build prompt
         prompt = self._build_choice_prompt(question, options, context)
-        
-        # Track the full prompt
-        context_tracker.store_prompt(prompt, context, question)
         
         # Make the query
         messages = [{"role": "user", "content": prompt}]
@@ -118,8 +130,12 @@ class AIQuery:
         for chunk in self.client.chat_stream(self.model, messages, context_name=context_name):
             response += chunk
         
-        # Track the response
-        context_tracker.store_response(response, "choice")
+        # Store the prompt-response pair with variables
+        context_tracker.store_prompt_and_response(
+            prompt=prompt,
+            response=response,
+            variable_map=variables_used
+        )
         
         # Parse the choice
         index, confidence = self.parser.parse_choice(response, options)
@@ -153,13 +169,20 @@ class AIQuery:
         """
         Ask AI for open response with full context tracking.
         """
+        # Build a dictionary of all variables being used
+        variables_used = {}
+        
         # Track the input variables
-        context_tracker.store_variable(
-            f"{context_name}_prompt",
-            prompt,
-            "Open-ended prompt"
-        )
+        if prompt:
+            variables_used["prompt"] = prompt
+            context_tracker.store_variable(
+                f"{context_name}_prompt",
+                prompt,
+                "Open-ended prompt"
+            )
+        
         if context:
+            variables_used["context"] = context
             context_tracker.store_variable(
                 f"{context_name}_context",
                 context,
@@ -184,6 +207,10 @@ class AIQuery:
                 result = self.compressor.compress_context(original_context, prompt, max_rounds=1)
                 compression_rounds = result.compression_rounds
                 
+                # Update the context in variables_used
+                variables_used["context"] = context
+                variables_used["original_context"] = original_context
+                
                 # Track the compressed context
                 context_tracker.store_variable(
                     f"{context_name}_compressed_context",
@@ -193,9 +220,6 @@ class AIQuery:
         
         # Build full prompt
         full_prompt = f"{context}\n\n{prompt}" if context else prompt
-        
-        # Track the full prompt
-        context_tracker.store_prompt(full_prompt, context, prompt)
         
         messages = [{"role": "user", "content": full_prompt}]
         
@@ -209,8 +233,12 @@ class AIQuery:
         for chunk in self.client.chat_stream(self.model, messages, context_name=context_name):
             response += chunk
         
-        # Track the response
-        context_tracker.store_response(response, "open")
+        # Store the prompt-response pair with variables
+        context_tracker.store_prompt_and_response(
+            prompt=full_prompt,
+            response=response,
+            variable_map=variables_used
+        )
         
         # Clean the response
         content = self.parser.clean_text(response)
@@ -243,9 +271,9 @@ class AIQuery:
         parts.append("\nOptions:")
         
         for i, option in enumerate(options):
-            parts.append(f"{i+1}. {option}")
+            parts.append(f"- {option}")
         
-        parts.append("\nRespond with ONLY the number (1, 2, 3, etc) of your choice:")
+        parts.append("\nRespond with ONLY one word to be parsed to be read as an answer.")
         
         return "\n".join(parts)
     

@@ -132,13 +132,11 @@ IMPORTANT: Do NOT select any file that is already in the list above. Pick a NEW 
             
             # Ask for next file or DONE
             result = self.ai.choice(
-                question=f"File #{i+1}: Name the next file to work on (with path) or say you're done",
+                question=f"File #{i+1}: Either give the name of the file you want to request access to, or say you are DONE",
                 options=[
                     "DONE - No more files needed",
-                    "src/newfile.py",
-                    "docs/update.md", 
-                    "config/settings.json",
-                    "tests/test_feature.py"
+                    "*path//to/nameoffile you want access to*",
+                    
                 ],
                 context=context
             )
