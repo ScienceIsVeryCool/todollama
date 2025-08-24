@@ -744,21 +744,6 @@ class ReportGenerator:
                     </span>
                 </h3>
                 
-                <!-- Variable Legend for this stage -->
-                {% if stage.variables %}
-                <div class="variable-legend">
-                    <h4>📦 Variables Used in This Stage</h4>
-                    <div class="legend-items">
-                        {% for var_name, var_data in stage.variables.items() %}
-                        <div class="legend-item">
-                            <div class="legend-color" style="background: {{ generate_color(var_name) }};"></div>
-                            <span style="font-weight: 600;">{{ var_name }}</span>
-                            <span style="color: #6b7280;">({{ var_data.size }} chars)</span>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
                 
                 <!-- Prompt-Response Pairs -->
                 {% for pair in stage.prompt_response_pairs %}
@@ -836,6 +821,24 @@ class ReportGenerator:
                             {% endif %}
                         </div>
                     </div>
+                    
+                    <!-- Variable Legend for this exchange -->
+                    {% if pair.variables_used %}
+                    <div class="variable-legend" style="margin: 0 1.5rem 1rem 1.5rem;">
+                        <h4>📦 Variables Used in This Exchange</h4>
+                        <div class="legend-items">
+                            {% for var_name, var_content in pair.variables_used.items() %}
+                            {% if not var_name.endswith('_congress') %}
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: {{ generate_color(var_name) }};"></div>
+                                <span style="font-weight: 600;">{{ var_name }}</span>
+                                <span style="color: #6b7280;">({{ var_content|length if var_content else 0 }} chars)</span>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
                     
                     <div class="pair-content">
                         <!-- Prompt Side -->

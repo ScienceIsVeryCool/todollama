@@ -4,7 +4,7 @@ GitLlama - AI-powered Git Automation Tool
 Simple git automation with AI decision-making: clone, branch, change, commit, push.
 """
 
-__version__ = "0.7.3"
+__version__ = "0.7.4"
 
 from .core import GitAutomator, GitOperationError, SimplifiedCoordinator
 from .ai import OllamaClient

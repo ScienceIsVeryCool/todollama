@@ -58,39 +58,72 @@ class TodoExecutor:
     
     def _edit_file_content(self, file_path: str, original_content: str, plan: str, todo: str) -> str:
         """Edit file content (create new or completely rewrite existing)"""
+        from ..utils.context_tracker import context_tracker
+        
+        # Store variables separately instead of embedding in context
+        file_name = Path(file_path).name
+        file_type = Path(file_path).suffix
+        context_name = f"rewrite_{file_name}" if original_content else f"create_{file_name}"
+        
+        # Store individual variables for tracking
+        context_tracker.store_variable(f"{context_name}_file_path", file_path, f"Target file path: {file_path}")
+        context_tracker.store_variable(f"{context_name}_file_name", file_name, f"Target file name: {file_name}")  
+        context_tracker.store_variable(f"{context_name}_file_type", file_type, f"File extension: {file_type}")
+        context_tracker.store_variable(f"{context_name}_plan", plan[:1500], "Action plan excerpt")
+        context_tracker.store_variable(f"{context_name}_todo", todo[:500], "TODO excerpt")
+        
+        if original_content:
+            context_tracker.store_variable(f"{context_name}_original_content", original_content[:2000], "Current file content for reference")
+        
+        # Build clean context without embedded variables
+        context_parts = [
+            "=== PLAN CONTEXT ===",
+            plan[:1500],
+            "",
+            "=== TODO CONTEXT ===", 
+            todo[:500]
+        ]
+        
+        if original_content:
+            context_parts.extend([
+                "",
+                "=== CURRENT FILE CONTENT (for reference) ===",
+                original_content[:2000]
+            ])
+        
+        clean_context = "\n".join(context_parts)
+        
         if original_content:
             # File exists - edit it
-            prompt = f"""Completely edit this file according to the plan: {file_path}
+            requirements = f"""You are completely rewriting the file: {file_path}
 
-Current content (for reference):
-{original_content[:2000]}
+TASK: Completely rewrite {file_path} according to the plan provided in the context.
 
-Plan excerpt:
-{plan[:1000]}
-
-TODO excerpt:
-{todo[:500]}
-
-Generate the COMPLETE new file content. Do not modify - completely rewrite.
-Wrap in appropriate markdown code blocks."""
-            context_name = "file_edit"
+REQUIREMENTS:
+- This is a COMPLETE rewrite of {file_path}
+- The file currently exists and its content is shown in the context for reference
+- Follow the plan and TODO requirements exactly
+- Generate professional, working code with appropriate comments
+- Use proper syntax and conventions for {file_type} files
+- Do NOT include markdown code blocks or explanations
+- Output only the raw file content that will be saved to {file_path}"""
         else:
             # File doesn't exist - create new
-            prompt = f"""Create complete content for this new file: {file_path}
+            requirements = f"""You are creating a new file: {file_path}
 
-Based on this plan:
-{plan[:1000]}
+TASK: Create complete content for the new file {file_path} based on the plan and TODO.
 
-To help implement this TODO:
-{todo[:500]}
-
-Generate professional, working code with comments.
-Wrap the content in appropriate markdown code blocks."""
-            context_name = "file_creation"
+REQUIREMENTS:
+- This is a NEW file creation for {file_path}
+- Follow the plan and TODO requirements exactly
+- Generate professional, working code with appropriate comments
+- Use proper syntax and conventions for {file_type} files
+- Do NOT include markdown code blocks or explanations  
+- Output only the raw file content that will be saved to {file_path}"""
         
         result = self.ai.file_write(
-            requirements=prompt,
-            context="",
+            requirements=requirements,
+            context=clean_context,
             context_name=context_name
         )
         
