@@ -33,8 +33,8 @@ class MultipleChoiceResult:
 
 @dataclass
 class SingleWordResult:
-    """Result from a single word query"""
-    word: str
+    """Result from a single continuous string query (no whitespace allowed)"""
+    word: str  # The extracted continuous string without any whitespace
     confidence: float
     raw: str
     context_compressed: bool = False
@@ -84,19 +84,22 @@ Instructions:
 
 Your answer:""",
 
-        "single_word": """Based on the context provided, answer the following question with a single word.
+        "single_word": """Based on the context provided, answer the following question with a single continuous string.
 
 Context: {context}
 
 Question: {question}
 
-Instructions:
-- Respond with ONLY one word
-- No explanations, punctuation, or additional text
-- The word should directly answer the question
-- Be precise and specific
-
-Your single word answer:""",
+CRITICAL OUTPUT REQUIREMENTS:
+- Output EXACTLY ONE continuous string with NO spaces, NO tabs, NO newlines
+- Do NOT add quotes, apostrophes, backticks, or ANY punctuation marks
+- Do NOT add periods, commas, colons, semicolons, or ANY symbols
+- The output will be read LITERALLY character-by-character as raw text
+- If your answer would normally be "hello world", output: helloworld
+- If your answer would normally be "user-name", output: username
+- NO whitespace characters allowed ANYWHERE in your response
+- Your output must be a single unbroken sequence of alphanumeric characters
+- Begin typing your answer immediately after this colon with NO space:""",
 
         "open": """Write a comprehensive response to the following prompt.
 
@@ -228,7 +231,7 @@ File content:"""
         auto_compress: bool = True
     ) -> SingleWordResult:
         """
-        Ask AI for a single word response
+        Ask AI for a single continuous string response with no whitespace
         """
         # Build variables dictionary
         variables_used = {}
@@ -236,7 +239,7 @@ File content:"""
         if question:
             variables_used["question"] = question
             context_tracker.store_variable(
-                f"{context_name}_question", question, "Single word question"
+                f"{context_name}_question", question, "Single continuous string question"
             )
         
         # Handle context and compression
@@ -279,10 +282,10 @@ File content:"""
         context_tracker.store_variable(
             f"{context_name}_result",
             {"word": word, "confidence": confidence},
-            "Single word result"
+            "Single continuous string result"
         )
         
-        logger.info(f"✅ Single word: {word} (confidence: {confidence:.2f})")
+        logger.info(f"✅ Continuous string: {word} (confidence: {confidence:.2f})")
         return result
     
     def open(
@@ -514,18 +517,29 @@ File content:"""
         return 'A', 0, 0.3
     
     def _parse_single_word_response(self, response):
-        """Parse single word response"""
-        # Clean and extract single word
-        words = response.strip().split()
-        if words:
-            # Take the first word and clean it
-            word = re.sub(r'[^\w]', '', words[0])
-            if word:
-                confidence = 0.9 if len(words) == 1 else 0.7
-                return word, confidence
+        """Parse single continuous string response (no whitespace allowed)"""
+        # Strip any leading/trailing whitespace that might have been added
+        cleaned = response.strip()
+        
+        # Extract the first continuous alphanumeric string
+        # This regex finds the first sequence of alphanumeric characters (including underscores and hyphens)
+        match = re.search(r'^([a-zA-Z0-9_-]+)', cleaned)
+        
+        if match:
+            word = match.group(1)
+            # High confidence if the entire response is just the word
+            confidence = 0.9 if word == cleaned else 0.7
+            return word, confidence
+        
+        # Fallback: try to extract any alphanumeric sequence
+        fallback_match = re.search(r'([a-zA-Z0-9]+)', cleaned)
+        if fallback_match:
+            word = fallback_match.group(1)
+            logger.warning(f"Extracted '{word}' from non-standard response: {response}")
+            return word, 0.5
         
         # Default fallback
-        logger.warning(f"Could not parse single word response: {response}")
+        logger.warning(f"Could not parse continuous string from response: {response}")
         return "unknown", 0.3
     
     def _clean_file_content(self, response):

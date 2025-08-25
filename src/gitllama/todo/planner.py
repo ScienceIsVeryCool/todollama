@@ -164,16 +164,21 @@ class TodoPlanner:
     
     def _generate_detailed_plan(self, context: str, todo_content: str) -> str:
         """Generate detailed implementation plan"""
-        prompt = """Based on the TODO and code analysis, create a detailed action plan.
+        prompt = """Based on the TODO and code analysis, create a COMPREHENSIVE action plan to complete ALL tasks in the TODO file.
 
-The plan should:
-1. Select ONE small, bite-sized task from the TODO that can be completed in one sitting
-2. List specific files that need to be created/modified/deleted
-3. Describe what changes to make in each file
-4. Define success criteria
-5. Suggest a branch name
+CRITICAL INSTRUCTIONS:
+1. You MUST attempt to complete the ENTIRE TODO file, not just one task
+2. Analyze EVERY item in the TODO and determine what files are needed for COMPLETE implementation
+3. List ALL files that need to be created/modified/deleted to accomplish EVERYTHING in the TODO
+4. For each file, describe the specific changes needed to fulfill ALL related TODO requirements
+5. Create a holistic strategy that addresses ALL interconnected TODO items simultaneously
+6. Define success criteria that encompasses COMPLETION of the ENTIRE TODO list
+7. Suggest a branch name that reflects the comprehensive nature of ALL changes
 
-Be specific and actionable. Focus on making incremental progress toward the TODO goals."""
+Be exhaustive and thorough. Name EVERY file needed across the ENTIRE codebase to complete ALL TODO items.
+Think systematically about dependencies - if TODO item A requires changes to files X, Y, Z, and TODO item B requires changes to files Y, Z, W, then your plan must include ALL files: X, Y, Z, W.
+
+Your goal is TOTAL COMPLETION of the TODO file. Do not leave any TODO item unaddressed."""
         
         result = self.ai.open(
             prompt=prompt,
@@ -185,13 +190,14 @@ Be specific and actionable. Focus on making incremental progress toward the TODO
     
     def _extract_branch_name(self, plan: str) -> str:
         """Extract or generate branch name from plan"""
-        prompt = """Based on this plan, suggest a git branch name.
+        prompt = """Based on this COMPREHENSIVE plan to complete the ENTIRE TODO, suggest a git branch name.
 
 Rules:
-- Use format: type/description (e.g., feat/add-auth, fix/memory-leak)
+- Use format: type/description (e.g., feat/complete-todo, feat/implement-all-features)
 - Lowercase with hyphens
 - Max 30 characters
-- Be specific to the task
+- Reflect that this implements MULTIPLE TODO items comprehensively
+- Avoid overly specific names since this covers the ENTIRE TODO
 
 Respond with ONLY the branch name, no explanation."""
         
@@ -211,17 +217,24 @@ Respond with ONLY the branch name, no explanation."""
     
     def _extract_file_list_from_plan(self, plan: str) -> List[str]:
         """Extract a list of files that need to be worked on from the detailed plan"""
-        prompt = """Based on this action plan, list ALL the files that need to be modified, created, or deleted to complete the task.
+        prompt = """Based on this COMPREHENSIVE action plan, list EVERY SINGLE FILE that needs to be modified, created, or deleted to COMPLETELY fulfill ALL tasks in the TODO.
 
-IMPORTANT INSTRUCTIONS:
+CRITICAL EXTRACTION INSTRUCTIONS:
+- You MUST list EVERY file mentioned or implied in the plan
+- Include ALL files needed for COMPLETE implementation of ALL TODO items
 - List each file on a separate line
 - Use relative paths from the project root (e.g., src/main.py, not ./src/main.py)
-- Include both existing files to modify AND new files to create
+- Include ALL existing files to modify AND ALL new files to create
 - If a file needs to be deleted, prefix it with "DELETE: "
 - If a file needs to be created, prefix it with "CREATE: "
 - If a file needs to be modified, just list the path normally
-- Be specific and exact with file paths
-- Only list files that are directly mentioned or implied in the plan
+- Be EXHAUSTIVE - do not skip any files that are needed
+- Include test files, configuration files, documentation files if mentioned
+- Think about ALL dependencies and related files needed for full implementation
+
+Remember: The goal is COMPLETE implementation of the ENTIRE TODO.
+If the plan mentions 20 files, list ALL 20 files.
+If the plan implies additional helper files are needed, list those too.
 
 Format each line as:
 filename.ext
@@ -230,7 +243,7 @@ CREATE: new_file.py
 or
 DELETE: old_file.js
 
-List the files:"""
+List ALL the files:"""
 
         result = self.ai.open(
             prompt=prompt,
@@ -350,17 +363,17 @@ List the files:"""
             
             validation_context = "\n".join(context_parts)
             
-            # Ask yes/no validation question
-            question = f"Should {file_path} be included in the files to work on?"
+            # Ask yes/no validation question with bias toward inclusion for comprehensive TODO completion
+            question = f"Should {file_path} be included to ensure COMPLETE TODO implementation? (When in doubt, include it)"
             
             result = self.ai.multiple_choice(
                 question=question,
-                options=["YES", "NO"],
+                options=["YES - Include for comprehensive TODO completion", "NO - Not needed for TODO"],
                 context=validation_context,
                 context_name=f"validate_file_{i}"
             )
             
-            if result.value == "YES":
+            if "YES" in result.value:
                 verified_files.append({
                     "path": file_path,
                     "operation": operation,
@@ -373,7 +386,7 @@ List the files:"""
         logger.info(f"File validation complete: {len(verified_files)}/{len(candidate_files)} files approved")
         return verified_files
     
-    def _resolve_file_path_with_ai(self, intended_path: str, all_files: List[str], project_tree: str, plan: str) -> str:
+    def _resolve_file_path_with_ai(self, intended_path: str, all_files: List[str], _project_tree: str, plan: str) -> str:
         """Use AI to resolve the intended file path to an actual existing file"""
         # Check if the path exists as-is
         if intended_path in all_files:
@@ -428,31 +441,39 @@ Choose the EXACT file path from the list above, or type 'SKIP' if none are suita
         logger.info("Checking if additional files are needed beyond the plan")
         
         files = current_files.copy()
-        max_iterations = 10  # Safety limit
+        max_iterations = 20  # Increased limit for comprehensive TODO completion
         
         for i in range(max_iterations):
             selected_files = [f['path'] for f in files]
             
             # Build comprehensive context
             selected_files_text = '\n'.join(f'  {f} ({files[j]["operation"]})' for j, f in enumerate(selected_files)) if selected_files else '  None yet'
-            available_files_text = '\n'.join(f'  {f}' for f in all_files[:30])
-            more_files_text = f'  ... and {len(all_files) - 30} more files' if len(all_files) > 30 else ''
+            available_files_text = '\n'.join(f'  {f}' for f in all_files[:50])  # Show more files
+            more_files_text = f'  ... and {len(all_files) - 50} more files' if len(all_files) > 50 else ''
             
-            context = f"""CURRENT ACTION PLAN:
+            context = f"""COMPREHENSIVE ACTION PLAN FOR ENTIRE TODO:
 {plan}
 
-FILES ALREADY SELECTED:
+FILES ALREADY SELECTED ({len(files)} files):
 {selected_files_text}
 
 PROJECT STRUCTURE:
 {project_tree}
 
-AVAILABLE FILES (first 30):
+AVAILABLE FILES (first 50):
 {available_files_text}
 {more_files_text}
 
-Do you need to select any ADDITIONAL files beyond what's already selected?
-Respond with the exact relative file path (e.g., 'src/utils.py') or 'DONE' if no more files are needed."""
+CRITICAL: We need to complete the ENTIRE TODO file. Review the plan carefully.
+Are there ANY additional files needed to FULLY complete ALL TODO items?
+Think about:
+- Test files for new functionality
+- Configuration files that need updates
+- Helper/utility files that support the main changes
+- Documentation files if mentioned in TODO
+- Any dependency files
+
+Respond with the exact relative file path (e.g., 'src/utils.py') or 'DONE' ONLY if you are ABSOLUTELY CERTAIN all files needed for COMPLETE TODO implementation are selected."""
             
             result = self.ai.single_word(
                 question="Additional file needed or DONE?",
