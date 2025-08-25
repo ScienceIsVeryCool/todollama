@@ -109,6 +109,20 @@ def main() -> int:
             print(f"  Modified files: {', '.join(results['modified_files'])}")
             print(f"  Commit: {results['commit_hash']}")
             
+            # Test results info
+            test_results = results.get('test_results', {})
+            if test_results.get('test_executed'):
+                test_status = "✅ PASSED" if test_results.get('test_passed') else "❌ FAILED"
+                print(f"\n🧪 Tests: {test_status} (exit code: {test_results.get('test_exit_code', 'unknown')})")
+                
+                ai_eval = test_results.get('ai_evaluation', {})
+                if ai_eval.get('success'):
+                    print(f"  AI Assessment: ✅ Implementation successful")
+                elif ai_eval.get('partial_success'):
+                    print(f"  AI Assessment: ⚠️ Partially successful")
+                else:
+                    print(f"  AI Assessment: ❌ Implementation issues detected")
+            
             # TODO-driven workflow info
             if results.get('todo_driven'):
                 print(f"\n🎯 TODO-Driven Analysis Complete")
@@ -129,6 +143,15 @@ def main() -> int:
             return 0
         else:
             print(f"✗ Workflow failed: {results['error']}")
+            
+            # Special handling for test failure aborts
+            if results.get('commit_aborted'):
+                print("🚫 COMMIT ABORTED: Tests failed with non-zero exit code")
+                print("   Implementation was not committed due to test failure")
+                test_results = results.get('test_results', {})
+                if test_results.get('test_exit_code'):
+                    print(f"   Test exit code: {test_results['test_exit_code']}")
+            
             # Show failure report if available
             if results.get('report_path'):
                 print(f"📊 Error Report Generated: {results['report_path']}")

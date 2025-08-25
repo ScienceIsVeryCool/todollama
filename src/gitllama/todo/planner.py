@@ -297,6 +297,11 @@ List ALL the files:"""
                 actual_file_path = clean_file_path
             
             if actual_file_path and actual_file_path != "SKIP":
+                # Validate that this is not a directory path
+                if self._is_likely_directory_path(actual_file_path):
+                    logger.warning(f"Skipping likely directory path: {actual_file_path}")
+                    continue
+                
                 processed_files.append({
                     "path": actual_file_path,
                     "operation": operation,
@@ -509,6 +514,27 @@ Respond with the exact relative file path (e.g., 'src/utils.py') or 'DONE' ONLY 
                 logger.warning(f"Skipping invalid or duplicate file: {response}")
         
         return files
+    
+    def _is_likely_directory_path(self, path: str) -> bool:
+        """Check if a path is likely a directory (no extension, common directory names)"""
+        import os.path
+        
+        # Check if it has no extension and is a common directory name
+        common_dirs = {'src', 'lib', 'test', 'tests', 'docs', 'config', 'scripts', 'bin', 'data', 'assets'}
+        
+        # If it's just a directory name with no extension
+        if '.' not in os.path.basename(path) and os.path.basename(path).lower() in common_dirs:
+            return True
+        
+        # If it ends with a slash, it's definitely a directory
+        if path.endswith('/') or path.endswith('\\'):
+            return True
+        
+        # If it's a single word that's a common directory name
+        if '/' not in path and '\\' not in path and path.lower() in common_dirs:
+            return True
+        
+        return False
     
     def _parse_file_path(self, ai_response: str) -> str:
         """Parse file path from AI response"""

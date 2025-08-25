@@ -251,11 +251,49 @@ class GitAutomator:
             # Step 1: Clone repository
             repo_path = self.clone_repository(git_url)
             
-            # Step 2: Run simplified TODO workflow
-            logger.info("🎯 Running TODO-driven workflow")
+            # Step 2: Run simplified TODO workflow (includes testing)
+            logger.info("🎯 Running TODO-driven workflow with testing")
             result = simplified.run_todo_workflow(repo_path)
             
-            # Step 3: Create/checkout branch
+            # Step 3: Check test results - HARD FAILURE on test exit code failure
+            test_results = result.get('test_results', {})
+            if test_results.get('test_executed'):
+                if not test_results.get('test_passed'):
+                    logger.error("❌ Tests failed with exit code: {}".format(test_results.get('test_exit_code', 'unknown')))
+                    logger.error("🚫 ABORTING COMMIT due to test failure - regardless of AI assessment")
+                    
+                    # Generate failure report before aborting
+                    report_path = None
+                    if hasattr(simplified, 'generate_final_report'):
+                        try:
+                            report_path = simplified.generate_final_report(
+                                repo_path=str(repo_path),
+                                branch=branch_name or "unknown",
+                                modified_files=result['modified_files'],
+                                commit_hash="test-failure-abort",
+                                success=False,
+                                commit_message="Aborted due to test failure",
+                                file_diffs=result.get('file_diffs', {}),
+                                branch_info={"created": False, "base_branch": "unknown"},
+                                test_results=test_results
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to generate failure report: {e}")
+                    
+                    return {
+                        "success": False,
+                        "error": f"Tests failed with exit code {test_results.get('test_exit_code')}. Commit aborted.",
+                        "repo_path": str(repo_path),
+                        "branch": branch_name or "unknown", 
+                        "modified_files": result['modified_files'],
+                        "test_results": test_results,
+                        "commit_aborted": True,
+                        "report_path": str(report_path) if report_path else None
+                    }
+                else:
+                    logger.info("✅ Tests passed - proceeding with commit regardless of AI assessment")
+            
+            # Step 4: Create/checkout branch
             if not branch_name:
                 branch_name = result['branch_name']
             
@@ -265,7 +303,7 @@ class GitAutomator:
             
             self.checkout_branch(branch_name)
             
-            # Step 4: Commit changes
+            # Step 5: Commit changes
             if result['modified_files']:
                 commit_hash, commit_msg = self.commit_changes()
                 self.push_changes(branch=branch_name)
@@ -273,7 +311,7 @@ class GitAutomator:
                 commit_hash = "no-changes"
                 commit_msg = "No changes to commit"
             
-            # Step 5: Generate final report
+            # Step 6: Generate final report
             report_path = None
             if hasattr(simplified, 'generate_final_report'):
                 try:
@@ -285,7 +323,8 @@ class GitAutomator:
                         success=True,
                         commit_message=commit_msg,
                         file_diffs=result.get('file_diffs', {}),
-                        branch_info={"created": True, "base_branch": "main"}
+                        branch_info={"created": True, "base_branch": "main"},
+                        test_results=test_results
                     )
                 except Exception as e:
                     logger.warning(f"Failed to generate report: {e}")
@@ -298,6 +337,7 @@ class GitAutomator:
                 "commit_hash": commit_hash,
                 "plan": result['plan'],
                 "todo_driven": True,
+                "test_results": test_results,
                 "message": "TODO-driven workflow completed",
                 "report_path": str(report_path) if report_path else None
             }

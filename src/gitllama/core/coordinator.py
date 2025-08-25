@@ -34,7 +34,7 @@ class SimplifiedCoordinator:
         logger.info(f"Initialized Simplified TODO-driven Coordinator with model: {model}")
     
     def run_todo_workflow(self, repo_path: Path) -> Dict:
-        """Run the complete simplified workflow"""
+        """Run the complete simplified workflow with testing"""
         logger.info("=" * 60)
         logger.info("STARTING SIMPLIFIED TODO-DRIVEN WORKFLOW")
         logger.info("=" * 60)
@@ -52,8 +52,18 @@ class SimplifiedCoordinator:
         
         # Phase 3: Execute plan
         logger.info("\n🚀 PHASE 3: EXECUTION")
-        modified_files, file_diffs = self.executor.execute_plan(repo_path, action_plan)
-        logger.info(f"Execution complete: {len(modified_files)} files modified")
+        try:
+            modified_files, file_diffs = self.executor.execute_plan(repo_path, action_plan)
+            logger.info(f"Execution complete: {len(modified_files)} files modified")
+        except Exception as e:
+            logger.error(f"❌ Execution had errors: {e}")
+            # Continue with testing even if execution had issues
+            modified_files, file_diffs = [], {}
+            logger.info("Proceeding with testing despite execution errors")
+        
+        # Phase 4: Test the implementation (always run, even if execution failed)
+        logger.info("\n🧪 PHASE 4: TESTING")
+        test_results = self._run_tests(repo_path, modified_files, action_plan)
         
         logger.info("=" * 60)
         logger.info("WORKFLOW COMPLETE")
@@ -66,12 +76,74 @@ class SimplifiedCoordinator:
             "file_diffs": file_diffs,
             "plan": action_plan['plan'],
             "analysis_summary": analysis['summary'],
-            "todo_found": bool(analysis['todo_content'])
+            "todo_found": bool(analysis['todo_content']),
+            "test_results": test_results
+        }
+    
+    def _run_tests(self, repo_path: Path, modified_files: List[str], action_plan: Dict) -> Dict:
+        """Run tests on the implementation (always executes, even with no files)"""
+        logger.info("Generating and running tests for implementation")
+        
+        # Always generate test script, even if no files were modified
+        try:
+            test_script = self.executor.generate_test_script(repo_path, modified_files, action_plan)
+            logger.info(f"✅ Generated test script ({len(test_script)} bytes)")
+        except Exception as e:
+            logger.error(f"❌ Failed to generate test script: {e}")
+            # Create a fallback test script
+            test_script = f"""#!/bin/bash
+set -e
+echo "❌ Failed to generate proper test script: {e}"
+echo "📁 Repository path: {repo_path}"
+echo "📝 Modified files: {', '.join(modified_files) if modified_files else 'None'}"
+echo "This is a fallback test that will fail to demonstrate error handling."
+exit 1
+"""
+        
+        # Run test script (always executes)
+        try:
+            success, output, exit_code = self.executor.run_test_script(repo_path, test_script)
+            logger.info(f"Test execution: {'✅ PASSED' if success else '❌ FAILED'} (exit code: {exit_code})")
+        except Exception as e:
+            logger.error(f"❌ Failed to run test script: {e}")
+            success = False
+            output = f"Failed to execute test script: {str(e)}"
+            exit_code = -1
+        
+        # Evaluate results with AI (always executes, even with errors)
+        try:
+            evaluation = self.executor.evaluate_test_results(output, exit_code, modified_files)
+            
+            if evaluation['success']:
+                logger.info("✅ AI evaluation: Implementation tests PASSED")
+            elif evaluation['partial_success']:
+                logger.warning("⚠️ AI evaluation: Implementation PARTIALLY successful")
+            else:
+                logger.error("❌ AI evaluation: Implementation tests FAILED")
+            
+            logger.info(f"Test analysis preview: {evaluation['detailed_analysis'][:200]}...")
+        except Exception as e:
+            logger.error(f"❌ Failed to evaluate test results with AI: {e}")
+            evaluation = {
+                "success": False,
+                "partial_success": False,
+                "detailed_analysis": f"Failed to evaluate test results: {str(e)}",
+                "exit_code": exit_code,
+                "confidence": 0.0
+            }
+        
+        return {
+            "test_executed": True,
+            "test_passed": success,
+            "test_exit_code": exit_code,
+            "test_output": output,
+            "ai_evaluation": evaluation,
+            "test_script": test_script
         }
     
     def generate_final_report(self, repo_path: str, branch: str, modified_files: List[str], 
                              commit_hash: str, success: bool, commit_message: str = "",
-                             file_diffs: Dict = None, branch_info: Dict = None) -> Optional[Path]:
+                             file_diffs: Dict = None, branch_info: Dict = None, test_results: Dict = None) -> Optional[Path]:
         """Generate the final HTML report if report generator is available.
         
         Args:
@@ -83,6 +155,7 @@ class SimplifiedCoordinator:
             commit_message: The exact commit message used
             file_diffs: Dictionary of file paths to their before/after content
             branch_info: Additional branch information
+            test_results: Test execution results and evaluation
             
         Returns:
             Path to generated report or None if no report generator
@@ -107,7 +180,8 @@ class SimplifiedCoordinator:
             total_decisions=total_decisions,
             commit_message=commit_message,
             file_diffs=file_diffs,
-            branch_info=branch_info
+            branch_info=branch_info,
+            test_results=test_results or {}
         )
         
         # Set model information
@@ -132,3 +206,9 @@ class SimplifiedCoordinator:
         report_path = self.report_generator.generate_report()
         logger.info(f"Report generated: {report_path}")
         return report_path
+    
+    def _extract_test_results_from_context(self):
+        """Extract test results from the most recent workflow if available"""
+        # This method is no longer used since test_results are passed directly
+        # Kept for backward compatibility
+        return {}

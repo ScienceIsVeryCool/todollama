@@ -27,9 +27,9 @@ def test_congress_individual_models():
         
         # Expected individual models for each representative
         expected_models = {
-            "Senator Prudence": "gemma3:4b",
-            "Representative Innovation": "gemma3:4b", 
-            "Justice Balance": "gemma3:4b"
+            "Caspar the Rational": "gemma3:4b",
+            "Melchior the Visionary": "gemma3:4b", 
+            "Balthasar the Compassionate": "gemma3:4b"
         }
         
         print("🔧 Testing congress initialization - fallback model should not affect individual models:")
@@ -43,13 +43,13 @@ def test_congress_individual_models():
             
             # Check that each representative has their expected individual model
             for rep in REPRESENTATIVES:
-                expected = expected_models[rep.name]
+                expected = expected_models[rep.name_title]
                 actual = rep.model
                 status = "✅" if actual == expected else "❌"
-                print(f"      {status} {rep.name}: {actual} (expected: {expected})")
+                print(f"      {status} {rep.name_title}: {actual} (expected: {expected})")
                 
                 if actual != expected:
-                    print(f"      ❌ ERROR: {rep.name} has model {actual}, expected {expected}")
+                    print(f"      ❌ ERROR: {rep.name_title} has model {actual}, expected {expected}")
                     return False
         
         print(f"\n🏛️ Congress Info Test:")
@@ -61,13 +61,13 @@ def test_congress_individual_models():
         print(f"   🎯 Unique models: {len(set(congress_info['models']))}")
         
         for i, rep in enumerate(congress_info['representatives'], 1):
-            expected_model = expected_models[rep['name']]
+            expected_model = expected_models[rep['name_title']]
             actual_model = rep['model']
             status = "✅" if actual_model == expected_model else "❌"
-            print(f"   {status} {i}. {rep['name']} ({rep['title']}) - Model: {actual_model}")
+            print(f"   {status} {i}. {rep['name_title']} - Model: {actual_model}")
             
             if actual_model != expected_model:
-                print(f"      ❌ ERROR: {rep['name']} has model {actual_model}, expected {expected_model}")
+                print(f"      ❌ ERROR: {rep['name_title']} has model {actual_model}, expected {expected_model}")
                 return False
         
         print(f"\n✅ All congress representatives correctly use their individual models!")

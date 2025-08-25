@@ -44,7 +44,7 @@ class ReportGenerator:
     def set_executive_summary(self, repo_path: str, branch: str, modified_files: List[str], 
                             commit_hash: str, success: bool, total_decisions: int,
                             commit_message: str = "", file_diffs: Dict[str, Dict] = None,
-                            branch_info: Dict = None):
+                            branch_info: Dict = None, test_results: Dict = None):
         """Set the executive summary data with detailed execution information
         
         Args:
@@ -57,6 +57,7 @@ class ReportGenerator:
             commit_message: The exact commit message used
             file_diffs: Dictionary of file paths to their before/after content
             branch_info: Additional branch information (created, existing, etc.)
+            test_results: Test execution results and AI evaluation
         """
         total_workflow_time = (datetime.now() - self.start_time).total_seconds()
         
@@ -72,6 +73,7 @@ class ReportGenerator:
             "execution_time": total_workflow_time,
             "file_diffs": file_diffs or {},
             "branch_info": branch_info or {},
+            "test_results": test_results or {},
         }
         logger.debug("Set executive summary data")
     
@@ -690,6 +692,12 @@ class ReportGenerator:
                     <div class="stat-value">{% if executive_summary.success %}✅{% else %}❌{% endif %}</div>
                     <div class="stat-label">Status</div>
                 </div>
+                {% if executive_summary.test_results.test_executed %}
+                <div class="stat-card">
+                    <div class="stat-value">{% if executive_summary.test_results.test_passed %}✅{% else %}❌{% endif %}</div>
+                    <div class="stat-label">Tests</div>
+                </div>
+                {% endif %}
             </div>
             
             <!-- Query Type Breakdown -->
@@ -743,6 +751,29 @@ class ReportGenerator:
                 <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid #8b5cf6; margin-bottom: 1rem;">
                     <div style="font-weight: 600; color: #7c3aed; margin-bottom: 0.5rem;">📝 Commit Message</div>
                     <div style="background: white; padding: 0.75rem; border-radius: 6px; font-family: monospace; white-space: pre-wrap; color: #374151; border: 1px solid #e5e7eb;">{{ executive_summary.commit_message }}</div>
+                </div>
+                {% endif %}
+                
+                <!-- Test Results Summary -->
+                {% if executive_summary.test_results.test_executed %}
+                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid {% if executive_summary.test_results.test_passed %}#10b981{% else %}#ef4444{% endif %}; margin-bottom: 1rem;">
+                    <div style="font-weight: 600; color: {% if executive_summary.test_results.test_passed %}#065f46{% else %}#dc2626{% endif %}; margin-bottom: 0.5rem;">
+                        🧪 Test Results: {% if executive_summary.test_results.test_passed %}✅ PASSED{% else %}❌ FAILED{% endif %} (Exit Code: {{ executive_summary.test_results.test_exit_code }})
+                    </div>
+                    
+                    {% if executive_summary.test_results.ai_evaluation %}
+                    {% set ai_eval = executive_summary.test_results.ai_evaluation %}
+                    <div style="background: white; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; border: 1px solid #e5e7eb;">
+                        <div style="font-weight: 600; color: #374151; margin-bottom: 0.25rem;">AI Assessment:</div>
+                        <div style="color: {% if ai_eval.success %}#22c55e{% elif ai_eval.partial_success %}#f59e0b{% else %}#ef4444{% endif %}; font-weight: 600;">
+                            {% if ai_eval.success %}✅ Implementation Successful
+                            {% elif ai_eval.partial_success %}⚠️ Partially Successful  
+                            {% else %}❌ Implementation Issues
+                            {% endif %}
+                            ({{ (ai_eval.confidence * 100)|round }}% confidence)
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
                 {% endif %}
                 
@@ -898,6 +929,82 @@ class ReportGenerator:
                     {% endfor %}
                 </div>
             </div>
+        </div>
+        {% endif %}
+
+        <!-- Test Execution Details -->
+        {% if executive_summary.test_results.test_executed %}
+        <div class="section">
+            <h2>🧪 Test Execution & Validation</h2>
+            
+            <!-- Test Summary Stats -->
+            <div class="context-stats">
+                <div class="stat-card">
+                    <div class="stat-value">{% if executive_summary.test_results.test_passed %}✅{% else %}❌{% endif %}</div>
+                    <div class="stat-label">Test Result</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ executive_summary.test_results.test_exit_code }}</div>
+                    <div class="stat-label">Exit Code</div>
+                </div>
+                {% if executive_summary.test_results.ai_evaluation %}
+                {% set ai_eval = executive_summary.test_results.ai_evaluation %}
+                <div class="stat-card">
+                    <div class="stat-value">{% if ai_eval.success %}✅{% elif ai_eval.partial_success %}⚠️{% else %}❌{% endif %}</div>
+                    <div class="stat-label">AI Assessment</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ (ai_eval.confidence * 100)|round }}%</div>
+                    <div class="stat-label">AI Confidence</div>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Test Script Content -->
+            {% if executive_summary.test_results.test_script %}
+            <div style="margin-top: 1.5rem;">
+                <h3 style="color: #374151; font-size: 1.2rem; margin-bottom: 0.75rem;">📄 Generated Test Script (test.sh)</h3>
+                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                    <div style="background: white; padding: 1rem; border-radius: 6px; border: 1px solid #e5e7eb;">
+                        <pre style="margin: 0; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; color: #374151; max-height: 400px; overflow-y: auto;">{{ executive_summary.test_results.test_script }}</pre>
+                        <button class="copy-btn" onclick="copyTestScript(this)" data-content="{{ executive_summary.test_results.test_script|replace('\"', '&quot;')|replace('`', '&#96;')|replace('$', '&#36;') }}" style="position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.9); border: 1px solid #d1d5db; padding: 0.25rem 0.75rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">📋 Copy Script</button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Test Output -->
+            {% if executive_summary.test_results.test_output %}
+            <div style="margin-top: 1.5rem;">
+                <h3 style="color: #374151; font-size: 1.2rem; margin-bottom: 0.75rem;">📊 Complete Test Output</h3>
+                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid {% if executive_summary.test_results.test_passed %}#10b981{% else %}#ef4444{% endif %};">
+                    <div style="background: {% if executive_summary.test_results.test_passed %}#f0fdf4{% else %}#fef2f2{% endif %}; padding: 1rem; border-radius: 6px; border: 1px solid {% if executive_summary.test_results.test_passed %}#bbf7d0{% else %}#fecaca{% endif %};">
+                        <div style="font-weight: 600; color: {% if executive_summary.test_results.test_passed %}#065f46{% else %}#dc2626{% endif %}; margin-bottom: 0.75rem;">
+                            🖥️ Terminal Output (Exit Code: {{ executive_summary.test_results.test_exit_code }})
+                        </div>
+                        <pre style="margin: 0; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; color: #374151; max-height: 500px; overflow-y: auto; background: #1f2937; color: #f9fafb; padding: 1rem; border-radius: 4px;">{{ executive_summary.test_results.test_output }}</pre>
+                        <button class="copy-btn" onclick="copyTestOutput(this)" data-content="{{ executive_summary.test_results.test_output|replace('\"', '&quot;')|replace('`', '&#96;')|replace('$', '&#36;') }}" style="position: relative; margin-top: 0.5rem; background: rgba(255,255,255,0.9); border: 1px solid #d1d5db; padding: 0.25rem 0.75rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">📋 Copy Output</button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- AI Analysis -->
+            {% if executive_summary.test_results.ai_evaluation and executive_summary.test_results.ai_evaluation.detailed_analysis %}
+            <div style="margin-top: 1.5rem;">
+                <h3 style="color: #374151; font-size: 1.2rem; margin-bottom: 0.75rem;">🤖 AI Analysis & Recommendations</h3>
+                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border-left: 4px solid #8b5cf6;">
+                    <div style="background: white; padding: 1rem; border-radius: 6px; border: 1px solid #e5e7eb;">
+                        <div style="font-weight: 600; color: #7c3aed; margin-bottom: 0.75rem;">
+                            Assessment: {% if executive_summary.test_results.ai_evaluation.success %}✅ Implementation Successful
+                            {% elif executive_summary.test_results.ai_evaluation.partial_success %}⚠️ Partially Successful  
+                            {% else %}❌ Implementation Issues{% endif %}
+                        </div>
+                        <div style="color: #374151; line-height: 1.6; white-space: pre-wrap;">{{ executive_summary.test_results.ai_evaluation.detailed_analysis }}</div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
         {% endif %}
 
@@ -1107,6 +1214,61 @@ class ReportGenerator:
                 }, 2000);
             }).catch(err => {
                 console.error('Failed to copy:', err);
+            });
+        }
+        
+        function copyToClipboard(text, button) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Change button to show success
+                const originalText = button.innerHTML;
+                button.innerHTML = '✅ Copied!';
+                button.classList.add('copied');
+                
+                // Reset after 2 seconds
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+        
+        function copyTestScript(button) {
+            const content = button.getAttribute('data-content')
+                .replace(/&quot;/g, '"')
+                .replace(/&#96;/g, '`')
+                .replace(/&#36;/g, '$');
+            
+            navigator.clipboard.writeText(content).then(() => {
+                const originalText = button.innerHTML;
+                button.innerHTML = '✅ Copied!';
+                button.classList.add('copied');
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy test script:', err);
+            });
+        }
+        
+        function copyTestOutput(button) {
+            const content = button.getAttribute('data-content')
+                .replace(/&quot;/g, '"')
+                .replace(/&#96;/g, '`')
+                .replace(/&#36;/g, '$');
+                
+            navigator.clipboard.writeText(content).then(() => {
+                const originalText = button.innerHTML;
+                button.innerHTML = '✅ Copied!';
+                button.classList.add('copied');
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy test output:', err);
             });
         }
         
