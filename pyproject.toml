@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "gitllama"
+name = "todollama"
 version = "0.8.0"
-description = "AI-powered git automation tool - clone, branch, change, commit, push with intelligence"
+description = "AI-powered Python code generation tool - creates containerized Python applications from TODO.md descriptions"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
 authors = [
@@ -29,7 +29,7 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-keywords = ["git", "automation", "ai", "llm", "ollama", "workflow", "devops"]
+keywords = ["python", "code-generation", "ai", "llm", "ollama", "containerization", "todo"]
 requires-python = ">=3.8"
 dependencies = [
     "requests>=2.31.0",
@@ -53,12 +53,12 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/gitllama"
-Repository = "https://github.com/your-org/gitllama.git"
-Issues = "https://github.com/your-org/gitllama/issues"
+Homepage = "https://github.com/your-org/todollama"
+Repository = "https://github.com/your-org/todollama.git"
+Issues = "https://github.com/your-org/todollama/issues"
 
 [project.scripts]
-gitllama = "gitllama.cli:main"
+todollama = "gitllama.cli:main"
 
 [tool.hatch.build.targets.sdist]
 include = [
