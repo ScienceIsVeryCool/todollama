@@ -1,6 +1,6 @@
 """
-Simplified File Executor for GitLlama
-Executes the planned file operations and runs tests
+Python Application Executor for TODOllama
+Executes Python application generation with Docker containerization and comprehensive testing
 """
 
 import logging
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class TodoExecutor:
-    """Executes planned file operations and tests"""
+    """Executes Python application generation with Docker containerization and comprehensive testing"""
     
     def __init__(self, client: OllamaClient, model: str = "gemma3:4b"):
         self.client = client
@@ -87,6 +87,82 @@ class TodoExecutor:
         
         return modified_files, file_diffs
     
+    def build_docker_container(self, repo_path: Path, skip_docker: bool = False) -> Dict:
+        """Build Docker container for the Python application"""
+        if skip_docker:
+            logger.info("Skipping Docker build (--no-docker flag set)")
+            return {"skipped": True, "success": False, "image_name": None}
+        
+        logger.info("Building Docker container for Python application")
+        
+        dockerfile_path = repo_path / "Dockerfile" 
+        if not dockerfile_path.exists():
+            logger.warning("No Dockerfile found - cannot build container")
+            return {"skipped": True, "success": False, "image_name": None, "error": "No Dockerfile found"}
+        
+        # Use docker by default, fallback to podman if available
+        container_tool = "docker"
+        try:
+            subprocess.run(["docker", "--version"], capture_output=True, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            try:
+                subprocess.run(["podman", "--version"], capture_output=True, check=True) 
+                container_tool = "podman"
+                logger.info("Docker not found, using Podman instead")
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                logger.error("Neither Docker nor Podman found")
+                return {"skipped": True, "success": False, "image_name": None, "error": "No container runtime found"}
+        
+        # Generate image name from project
+        project_name = repo_path.name.lower().replace(" ", "-")
+        image_name = f"todollama-{project_name}:latest"
+        
+        try:
+            # Build the container
+            logger.info(f"Building container image: {image_name}")
+            result = subprocess.run(
+                [container_tool, "build", "-t", image_name, "."],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"✅ Successfully built Docker image: {image_name}")
+                return {
+                    "skipped": False,
+                    "success": True, 
+                    "image_name": image_name,
+                    "container_tool": container_tool,
+                    "build_output": result.stdout[-1000:]  # Last 1000 chars
+                }
+            else:
+                logger.error(f"❌ Docker build failed with exit code {result.returncode}")
+                return {
+                    "skipped": False,
+                    "success": False,
+                    "image_name": image_name,
+                    "container_tool": container_tool,
+                    "error": result.stderr[-1000:]  # Last 1000 chars of error
+                }
+        except subprocess.TimeoutExpired:
+            logger.error("Docker build timed out after 5 minutes")
+            return {
+                "skipped": False,
+                "success": False,
+                "image_name": image_name,
+                "error": "Build timeout after 5 minutes"
+            }
+        except Exception as e:
+            logger.error(f"Docker build failed with exception: {e}")
+            return {
+                "skipped": False,
+                "success": False, 
+                "image_name": image_name,
+                "error": str(e)
+            }
+    
     def _edit_file_content(self, file_path: str, original_content: str, plan: str, todo: str) -> str:
         """Edit file content (create new or completely rewrite existing)"""
         from ..utils.context_tracker import context_tracker
@@ -126,29 +202,38 @@ class TodoExecutor:
         
         if original_content:
             # File exists - edit it
-            requirements = f"""You are completely rewriting the file: {file_path}
+            requirements = f"""You are completely rewriting the Python application file: {file_path}
 
-TASK: Completely rewrite {file_path} according to the plan provided in the context.
+TASK: Completely rewrite {file_path} according to the Python containerization plan provided in the context.
 
 REQUIREMENTS:
 - This is a COMPLETE rewrite of {file_path}
-- The file currently exists and its content is shown in the context for reference
-- Follow the plan and TODO requirements exactly
-- Generate professional, working code with appropriate comments
-- Use proper syntax and conventions for {file_type} files
+- The file currently exists and its content is shown in the context for reference  
+- Follow the plan and TODO requirements exactly for Python application development
+- Generate production-ready Python code with proper error handling, logging, and documentation
+- Use modern Python best practices: type hints, docstrings, proper imports
+- For Python files (.py): Include proper imports, error handling, logging setup
+- For Docker files: Use official Python base images, multi-stage builds where appropriate
+- For config files: Use environment variables, proper validation
+- For requirements.txt: Pin versions for production stability
 - Do NOT include markdown code blocks or explanations
 - Output only the raw file content that will be saved to {file_path}"""
         else:
             # File doesn't exist - create new
-            requirements = f"""You are creating a new file: {file_path}
+            requirements = f"""You are creating a new Python application file: {file_path}
 
-TASK: Create complete content for the new file {file_path} based on the plan and TODO.
+TASK: Create complete content for the new file {file_path} based on the Python containerization plan and TODO.
 
 REQUIREMENTS:
 - This is a NEW file creation for {file_path}
-- Follow the plan and TODO requirements exactly
-- Generate professional, working code with appropriate comments
-- Use proper syntax and conventions for {file_type} files
+- Follow the plan and TODO requirements exactly for Python application development
+- Generate production-ready Python code with proper error handling, logging, and documentation
+- Use modern Python best practices: type hints, docstrings, proper imports
+- For Python files (.py): Include proper imports, error handling, logging setup, main guards
+- For Docker files: Use official Python base images, efficient layering, health checks
+- For config files: Use environment variables, proper validation
+- For requirements.txt: Pin versions for production stability
+- For test files: Use pytest framework with proper fixtures and assertions
 - Do NOT include markdown code blocks or explanations  
 - Output only the raw file content that will be saved to {file_path}"""
         
@@ -168,11 +253,12 @@ REQUIREMENTS:
         # Build context about what was done
         files_list = "\n".join(f"- {f}" for f in modified_files)
         
-        requirements = f"""Generate a comprehensive test.sh bash script to test the TODO implementation.
+        requirements = f"""Generate a comprehensive test.sh bash script to test the Python application implementation with Docker containerization support.
 
 ENVIRONMENT INFORMATION:
 - Operating System: Ubuntu Linux
 - Python3 is installed and available
+- Docker/Podman may be available for container testing
 - A virtual environment (venv) should be used for Python projects
 - The script will run from the project root: {repo_path}
 - IMPORTANT: Assume we are NOT running as sudo - use only user-level commands
@@ -183,26 +269,30 @@ MODIFIED FILES:
 IMPLEMENTATION PLAN:
 {action_plan['plan'][:1500]}
 
-SCRIPT REQUIREMENTS:
+PYTHON + DOCKER TESTING SCRIPT REQUIREMENTS:
 1. Start with #!/bin/bash and set -e for error handling
 2. Begin with comprehensive environment logging:
    - Print current working directory (pwd)
    - List files in current directory (ls -la)
    - Show disk space usage (df -h .)
    - Display current user and system info (whoami, uname -a)
-3. Include ALL installation steps needed from a clean Ubuntu environment
-4. For Python projects:
+   - Check Python version (python3 --version)
+   - Check if Docker/Podman is available
+3. Test Python application directly:
    - Create and activate a virtual environment
    - Install all dependencies (pip install -r requirements.txt or similar)
-   - Run any setup commands
-5. Test the actual functionality that was implemented
+   - Run Python syntax checks (python -m py_compile on .py files)
+   - Run any existing test suites (pytest, unittest discover, etc.)
+4. Test Docker containerization if Dockerfile exists:
+   - Attempt to build Docker image (docker build or podman build)
+   - Basic container functionality test if build succeeds
+5. Test the specific Python functionality mentioned in the TODO
 6. Include meaningful echo statements to show progress
-7. Run any existing test suites if present (pytest, npm test, etc.)
-8. Test the specific features mentioned in the TODO
-9. Exit with code 0 on success, non-zero on failure
-10. Be thorough but complete within 60 seconds
+7. Validate Python best practices: imports, syntax, basic functionality
+8. Exit with code 0 on success, non-zero on failure
+9. Be thorough but complete within 120 seconds (allow more time for Docker builds)
 
-The script should verify that the TODO implementation actually works."""
+The script should verify both Python application functionality AND containerization."""
 
         context = f"""Project Structure Information:
 Modified {len(modified_files)} files to implement TODO items.

@@ -1,5 +1,6 @@
 """
-TODO-driven Project Analyzer with Context Tracking
+TODO-driven Python Project Analyzer with Context Tracking
+Specialized for analyzing TODO.md files and Python code generation requirements
 """
 
 import logging
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class TodoAnalyzer:
-    """Analyzes repository in relation to TODO.md with full context tracking"""
+    """Analyzes repository for Python application generation based on TODO.md requirements"""
     
     def __init__(self, client: OllamaClient, model: str = "gemma3:4b"):
         self.client = client
@@ -212,13 +213,14 @@ class TodoAnalyzer:
 
 Now analyzing chunk {chunk_num} of {total_chunks}.
 
-How does the TODO contents relate to this code context? 
+For Python application generation: How does the TODO contents relate to this code context? 
 Specifically:
-1. Are any of these files regions of interest for the TODO items?
-2. Which files would likely need to be worked on?
-3. What helpful information would you give someone implementing the TODO based on this code?
+1. What Python modules/packages would be needed to implement the TODO requirements?
+2. What existing Python code structure can be leveraged or needs modification?
+3. What containerization considerations (Docker, dependencies) are relevant?
+4. What testing approaches would be appropriate for this implementation?
 
-Be specific about file names and what needs to be done."""
+Be specific about Python files, packages, and deployment considerations."""
         
         result = self.ai.open(
             prompt=prompt,
@@ -239,15 +241,16 @@ Be specific about file names and what needs to be done."""
             "All chunk analysis responses combined"
         )
         
-        prompt = f"""Summarize the following analysis of how different code chunks relate to the TODO:
+        prompt = f"""Summarize the following analysis for Python application generation from TODO requirements:
 
 {combined[:8000]}
 
 Provide a concise summary that identifies:
-1. The most important files to work on
-2. Key insights about implementation approach
-3. Potential challenges or dependencies
-4. Recommended order of operations"""
+1. The most important Python files/modules to create or modify
+2. Key Python packages and dependencies needed
+3. Docker containerization requirements and considerations  
+4. Testing strategy and framework recommendations
+5. Deployment and production readiness considerations"""
         
         result = self.ai.open(
             prompt=prompt,

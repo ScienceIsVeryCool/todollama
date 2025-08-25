@@ -1,6 +1,6 @@
 """
-TODO-driven Planning Module for GitLlama
-Creates actionable plans based on TODO analysis
+TODO-driven Planning Module for TODOllama
+Creates actionable Python application plans based on TODO analysis with containerization support
 """
 
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class TodoPlanner:
-    """Creates actionable plans from TODO analysis"""
+    """Creates actionable Python application plans with Docker containerization from TODO analysis"""
     
     def __init__(self, client: OllamaClient, model: str = "gemma3:4b"):
         self.client = client
@@ -164,21 +164,30 @@ class TodoPlanner:
     
     def _generate_detailed_plan(self, context: str, todo_content: str) -> str:
         """Generate detailed implementation plan"""
-        prompt = """Based on the TODO and code analysis, create a COMPREHENSIVE action plan to complete ALL tasks in the TODO file.
+        prompt = """Based on the TODO and code analysis, create a COMPREHENSIVE Python application implementation plan to complete ALL tasks in the TODO file with full containerization support.
 
-CRITICAL INSTRUCTIONS:
-1. You MUST attempt to complete the ENTIRE TODO file, not just one task
-2. Analyze EVERY item in the TODO and determine what files are needed for COMPLETE implementation
-3. List ALL files that need to be created/modified/deleted to accomplish EVERYTHING in the TODO
-4. For each file, describe the specific changes needed to fulfill ALL related TODO requirements
-5. Create a holistic strategy that addresses ALL interconnected TODO items simultaneously
-6. Define success criteria that encompasses COMPLETION of the ENTIRE TODO list
-7. Suggest a branch name that reflects the comprehensive nature of ALL changes
+CRITICAL PYTHON APPLICATION INSTRUCTIONS:
+1. You MUST create a complete CONTAINERIZED Python application from the TODO requirements
+2. Focus on Python-specific implementation: modules, packages, dependencies, virtual environments
+3. MANDATORY: Include Docker containerization with Dockerfile, requirements.txt, and docker-compose.yml if needed
+4. MANDATORY: Include comprehensive Python testing using pytest or unittest
+5. List ALL Python files that need to be created/modified: .py files, config files, requirements.txt, setup.py/pyproject.toml
+6. Include proper Python project structure: src/, tests/, requirements.txt, Dockerfile, .dockerignore
+7. For each Python file, describe specific code implementation needed
+8. Consider Python best practices: virtual environments, dependency management, testing, logging
+9. Plan for deployment readiness: environment variables, configuration management, health checks
+10. Include CI/CD considerations for Python applications
 
-Be exhaustive and thorough. Name EVERY file needed across the ENTIRE codebase to complete ALL TODO items.
-Think systematically about dependencies - if TODO item A requires changes to files X, Y, Z, and TODO item B requires changes to files Y, Z, W, then your plan must include ALL files: X, Y, Z, W.
+Be exhaustive and Python-focused. Create a PRODUCTION-READY containerized Python application.
+Think systematically about:
+- Python package structure and imports
+- Dependencies and requirements.txt
+- Docker containerization and deployment
+- Testing strategy with pytest
+- Configuration and environment management
+- Logging and monitoring setup
 
-Your goal is TOTAL COMPLETION of the TODO file. Do not leave any TODO item unaddressed."""
+Your goal is a COMPLETE, DEPLOYABLE Python application in a Docker container."""
         
         result = self.ai.open(
             prompt=prompt,

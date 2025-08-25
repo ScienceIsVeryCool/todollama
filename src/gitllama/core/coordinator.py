@@ -1,5 +1,6 @@
 """
-Simplified AI Coordinator for TODO-driven development
+Python Application Coordinator for TODOllama
+AI-driven Python application generation with Docker containerization from TODO.md files
 """
 
 import logging
@@ -12,14 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 class SimplifiedCoordinator:
-    """Coordinates the simplified TODO-driven workflow"""
+    """Coordinates Python application generation from TODO.md with Docker containerization"""
     
-    def __init__(self, model: str = "gemma3:4b", base_url: str = "http://localhost:11434", git_url: Optional[str] = None):
+    def __init__(self, model: str = "gemma3:4b", base_url: str = "http://localhost:11434", git_url: Optional[str] = None, skip_docker: bool = False):
         self.model = model
         self.client = OllamaClient(base_url)
         self.analyzer = TodoAnalyzer(self.client, model)
         self.planner = TodoPlanner(self.client, model)
         self.executor = TodoExecutor(self.client, model)
+        self.skip_docker = skip_docker
         
         # Initialize report generator if git_url provided
         self.report_generator = None
@@ -31,12 +33,12 @@ class SimplifiedCoordinator:
             except ImportError as e:
                 logger.warning(f"Report generation dependencies not available: {e}")
         
-        logger.info(f"Initialized Simplified TODO-driven Coordinator with model: {model}")
+        logger.info(f"Initialized TODOllama Python Application Coordinator with model: {model}, Docker: {'disabled' if skip_docker else 'enabled'}")
     
     def run_todo_workflow(self, repo_path: Path) -> Dict:
         """Run the complete simplified workflow with testing"""
         logger.info("=" * 60)
-        logger.info("STARTING SIMPLIFIED TODO-DRIVEN WORKFLOW")
+        logger.info("STARTING PYTHON APPLICATION GENERATION WORKFLOW")
         logger.info("=" * 60)
         
         # Phase 1: Analyze repository with TODO focus
@@ -51,18 +53,28 @@ class SimplifiedCoordinator:
         logger.info(f"Branch: {action_plan['branch_name']}")
         
         # Phase 3: Execute plan
-        logger.info("\n🚀 PHASE 3: EXECUTION")
+        logger.info("\n🚀 PHASE 3: PYTHON APPLICATION EXECUTION")
         try:
             modified_files, file_diffs = self.executor.execute_plan(repo_path, action_plan)
-            logger.info(f"Execution complete: {len(modified_files)} files modified")
+            logger.info(f"Execution complete: {len(modified_files)} Python application files modified")
         except Exception as e:
             logger.error(f"❌ Execution had errors: {e}")
-            # Continue with testing even if execution had issues
+            # Continue with Docker build and testing even if execution had issues
             modified_files, file_diffs = [], {}
-            logger.info("Proceeding with testing despite execution errors")
+            logger.info("Proceeding with Docker build and testing despite execution errors")
+        
+        # Phase 3.5: Build Docker container
+        logger.info(f"\n🐳 PHASE 3.5: DOCKER CONTAINERIZATION ({'SKIPPED' if self.skip_docker else 'ENABLED'})")
+        docker_results = self.executor.build_docker_container(repo_path, self.skip_docker)
+        if docker_results.get('success'):
+            logger.info(f"✅ Docker build successful: {docker_results.get('image_name')}")
+        elif docker_results.get('skipped'):
+            logger.info("⏭️ Docker build skipped")
+        else:
+            logger.warning(f"❌ Docker build failed: {docker_results.get('error', 'Unknown error')}")
         
         # Phase 4: Test the implementation (always run, even if execution failed)
-        logger.info("\n🧪 PHASE 4: TESTING")
+        logger.info("\n🧪 PHASE 4: PYTHON APPLICATION TESTING")
         test_results = self._run_tests(repo_path, modified_files, action_plan)
         
         logger.info("=" * 60)
@@ -77,7 +89,10 @@ class SimplifiedCoordinator:
             "plan": action_plan['plan'],
             "analysis_summary": analysis['summary'],
             "todo_found": bool(analysis['todo_content']),
-            "test_results": test_results
+            "test_results": test_results,
+            "docker_results": docker_results,
+            "docker_built": docker_results.get('success', False),
+            "docker_image": docker_results.get('image_name')
         }
     
     def _run_tests(self, repo_path: Path, modified_files: List[str], action_plan: Dict) -> Dict:
@@ -163,7 +178,7 @@ exit 1
     
     def generate_final_report(self, repo_path: str, branch: str, modified_files: List[str], 
                              commit_hash: str, success: bool, commit_message: str = "",
-                             file_diffs: Dict = None, branch_info: Dict = None, test_results: Dict = None) -> Optional[Path]:
+                             file_diffs: Dict = None, branch_info: Dict = None, test_results: Dict = None, docker_results: Dict = None) -> Optional[Path]:
         """Generate the final HTML report if report generator is available.
         
         Args:
@@ -176,6 +191,7 @@ exit 1
             file_diffs: Dictionary of file paths to their before/after content
             branch_info: Additional branch information
             test_results: Test execution results and evaluation
+            docker_results: Docker containerization results and image information
             
         Returns:
             Path to generated report or None if no report generator
@@ -201,7 +217,8 @@ exit 1
             commit_message=commit_message,
             file_diffs=file_diffs,
             branch_info=branch_info,
-            test_results=test_results or {}
+            test_results=test_results or {},
+            docker_results=docker_results or {}
         )
         
         # Set model information

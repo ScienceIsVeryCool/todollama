@@ -1,7 +1,8 @@
 """
-GitLlama CLI Module with AI Integration
+TODOllama CLI Module with AI Integration
 
-AI-powered command-line interface for git automation.
+AI-powered command-line interface for Python code generation from TODO.md files.
+Creates containerized Python applications with full testing and deployment capabilities.
 """
 
 import argparse
@@ -17,24 +18,25 @@ from .utils.metrics import context_manager
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser."""
     parser = argparse.ArgumentParser(
-        description=f"GitLlama v{__version__} - AI-powered git automation",
+        description=f"TODOllama v{__version__} - AI-powered Python application generator",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  gitllama https://github.com/user/repo.git
-  gitllama https://github.com/user/repo.git --branch my-feature  
-  gitllama https://github.com/user/repo.git --model llama3:8b
-  gitllama https://github.com/user/repo.git --verbose
+  todollama https://github.com/user/project.git
+  todollama https://github.com/user/project.git --branch main  
+  todollama https://github.com/user/project.git --model llama3:8b
+  todollama https://github.com/user/project.git --verbose
+  todollama https://github.com/user/project.git --no-docker
 
-GitLlama uses AI to intelligently analyze repositories and make improvements.
-All decisions (commits, files, messages) are handled by AI.
+TODOllama reads TODO.md files and generates complete containerized Python applications.
+Creates Docker containers, tests, and deployment-ready code from descriptions.
 Requires Ollama to be running with a compatible model.
         """
     )
     
     parser.add_argument(
         "git_url",
-        help="Git repository URL to clone and modify"
+        help="Git repository URL containing TODO.md file to implement"
     )
     
     parser.add_argument(
@@ -48,6 +50,12 @@ Requires Ollama to be running with a compatible model.
         "--branch", "-b",
         default=None,
         help="Branch name to use (AI will decide if not specified)"
+    )
+    
+    parser.add_argument(
+        "--no-docker",
+        action="store_true",
+        help="Skip Docker containerization (creates Python app only)"
     )
     
     
@@ -88,33 +96,37 @@ def main() -> int:
     
     try:
         # Log version information
-        logging.info(f"🦙 GitLlama v{__version__} starting...")
+        logging.info(f"🐍 TODOllama v{__version__} starting...")
         
         # Test Ollama connection
-        print(f"🤖 Initializing GitLlama v{__version__} with AI model: {args.model}")
+        print(f"🤖 Initializing TODOllama v{__version__} with AI model: {args.model}")
         client = OllamaClient(args.ollama_url)
         
         if not client.is_available():
             print("⚠️  Warning: Ollama server not available.")
-            print("   GitLlama requires Ollama for AI features. Please ensure Ollama is running:")
+            print("   TODOllama requires Ollama for AI features. Please ensure Ollama is running:")
             print("   Install: https://ollama.ai")
             print("   Start: ollama serve")
             print("   Pull model: ollama pull gemma3:4b")
             return 1
         
-        # Run the TODO-driven workflow
-        print("🚀 Running TODO-driven workflow...")
+        # Run the Python generation workflow
+        print("🐍 Running Python application generation workflow...")
         with GitAutomator() as automator:
             results = automator.run_full_workflow(
                 git_url=args.git_url,
                 branch_name=args.branch,
                 model=args.model,
-                base_url=args.ollama_url
+                base_url=args.ollama_url,
+                skip_docker=args.no_docker
             )
         
         # Print results
         if results["success"]:
-            print("✓ GitLlama workflow completed successfully!")
+            print("✓ TODOllama workflow completed successfully!")
+            print(f"🐍 Python Application Generated!")
+            if not args.no_docker and results.get('docker_built'):
+                print(f"🐳 Docker Container: {results.get('docker_image', 'Built successfully')}")
             print(f"  Repository: {results['repo_path']}")
             print(f"  Branch: {results['branch']}")
             print(f"  Modified files: {', '.join(results['modified_files'])}")
