@@ -40,7 +40,8 @@ class Congress:
         # The fallback model is ignored since each representative has their own model
         self.voting_history = []
         models_used = [rep.model for rep in REPRESENTATIVES]
-        logger.info(f"🏛️ Congress initialized with individual models: {models_used} (requested fallback: {model})")
+        logger.info(f"🏛️ Congress initialized with individual representative models: {models_used}")
+        logger.info(f"🏛️ Main GitLlama model: {model} (Congress uses separate individual models above)")
     
     def evaluate_response(
         self,

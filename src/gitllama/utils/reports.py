@@ -423,25 +423,42 @@ class ReportGenerator:
             padding: 0.25rem 0.5rem; border-radius: 4px;
             background: rgba(251, 191, 36, 0.1);
         }
+        
+        /* Ensure tooltips can overflow their containers */
+        .pair-header, .section, .prompt-response-pair {
+            overflow: visible !important;
+        }
         .vote-result.approved { color: #22c55e; font-weight: 600; }
         .vote-result.rejected { color: #ef4444; font-weight: 600; }
         .vote-details-tooltip {
-            position: absolute; top: -10px; left: 50%;
-            transform: translateX(-50%) translateY(-100%);
+            position: fixed; 
             background: #374151; color: white; padding: 1rem;
-            border-radius: 8px; font-size: 0.85rem; white-space: nowrap;
-            z-index: 1000; opacity: 0; visibility: hidden; 
+            border-radius: 8px; font-size: 0.85rem;
+            z-index: 9999; opacity: 0; visibility: hidden; 
             transition: opacity 0.2s, visibility 0.2s;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            min-width: 240px; white-space: normal;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            min-width: 280px; max-width: 400px; white-space: normal;
+            pointer-events: none;
+            line-height: 1.4;
         }
         .congress-vote-summary:hover .vote-details-tooltip {
             opacity: 1; visibility: visible;
         }
         .vote-details-tooltip::after {
-            content: ''; position: absolute; top: 100%; left: 50%;
-            transform: translateX(-50%); border: 8px solid transparent;
+            content: ''; position: absolute; left: 20px;
+            border: 8px solid transparent;
+        }
+        
+        .vote-details-tooltip[style*="--arrow-position: bottom"]::after {
+            bottom: -8px;
             border-top-color: #374151;
+            border-bottom-color: transparent;
+        }
+        
+        .vote-details-tooltip[style*="--arrow-position: top"]::after {
+            top: -8px;
+            border-bottom-color: #374151;
+            border-top-color: transparent;
         }
         .vote-line {
             display: flex; justify-content: space-between; align-items: center;
@@ -1132,6 +1149,53 @@ class ReportGenerator:
             buttonElement.style.color = '#374151';
             buttonElement.style.background = 'white';
         }
+        
+        // Congress vote tooltip positioning
+        document.addEventListener('DOMContentLoaded', function() {
+            const congressElements = document.querySelectorAll('.congress-vote-summary');
+            
+            congressElements.forEach(element => {
+                const tooltip = element.querySelector('.vote-details-tooltip');
+                if (!tooltip) return;
+                
+                element.addEventListener('mouseenter', function(e) {
+                    const rect = element.getBoundingClientRect();
+                    const tooltipRect = tooltip.getBoundingClientRect();
+                    const viewportWidth = window.innerWidth;
+                    const viewportHeight = window.innerHeight;
+                    
+                    // Calculate position above the element
+                    let top = rect.top - tooltip.offsetHeight - 10;
+                    let left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2);
+                    
+                    // Adjust if tooltip goes off the left edge
+                    if (left < 10) {
+                        left = 10;
+                    }
+                    
+                    // Adjust if tooltip goes off the right edge
+                    if (left + tooltip.offsetWidth > viewportWidth - 10) {
+                        left = viewportWidth - tooltip.offsetWidth - 10;
+                    }
+                    
+                    // If tooltip goes above viewport, show it below instead
+                    if (top < 10) {
+                        top = rect.bottom + 10;
+                        tooltip.style.transform = 'none';
+                        // Adjust arrow position for bottom placement
+                        const arrow = tooltip.querySelector('::after');
+                        if (arrow) {
+                            tooltip.style.setProperty('--arrow-position', 'top');
+                        }
+                    } else {
+                        tooltip.style.setProperty('--arrow-position', 'bottom');
+                    }
+                    
+                    tooltip.style.top = top + 'px';
+                    tooltip.style.left = left + 'px';
+                });
+            });
+        });
     </script>
 </body>
 </html>'''
