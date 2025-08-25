@@ -8,6 +8,7 @@ import argparse
 import logging
 import sys
 
+from . import __version__
 from .core import GitAutomator, GitOperationError
 from .ai import OllamaClient
 from .utils.metrics import context_manager
@@ -16,7 +17,7 @@ from .utils.metrics import context_manager
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser."""
     parser = argparse.ArgumentParser(
-        description="GitLlama - AI-powered git automation",
+        description=f"GitLlama v{__version__} - AI-powered git automation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -34,6 +35,13 @@ Requires Ollama to be running with a compatible model.
     parser.add_argument(
         "git_url",
         help="Git repository URL to clone and modify"
+    )
+    
+    parser.add_argument(
+        "--version", "-V",
+        action="version",
+        version=f"GitLlama {__version__}",
+        help="Show version and exit"
     )
     
     parser.add_argument(
@@ -79,8 +87,11 @@ def main() -> int:
     )
     
     try:
+        # Log version information
+        logging.info(f"🦙 GitLlama v{__version__} starting...")
+        
         # Test Ollama connection
-        print(f"🤖 Initializing GitLlama with AI model: {args.model}")
+        print(f"🤖 Initializing GitLlama v{__version__} with AI model: {args.model}")
         client = OllamaClient(args.ollama_url)
         
         if not client.is_available():

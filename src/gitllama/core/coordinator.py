@@ -90,12 +90,32 @@ class SimplifiedCoordinator:
             logger.info(f"✅ Generated test script ({len(test_script)} bytes)")
         except Exception as e:
             logger.error(f"❌ Failed to generate test script: {e}")
-            # Create a fallback test script
+            # Create a fallback test script with enhanced logging
             test_script = f"""#!/bin/bash
 set -e
+
+echo "🧪 GITLLAMA TEST EXECUTION - FALLBACK MODE"
+echo "==========================================="
+
+# Environment logging
+echo "📍 ENVIRONMENT INFORMATION:"
+echo "Current directory: $(pwd)"
+echo "User: $(whoami)"
+echo "System: $(uname -a)"
+echo ""
+
+echo "📁 DIRECTORY CONTENTS:"
+ls -la
+echo ""
+
+echo "💾 DISK SPACE:"
+df -h .
+echo ""
+
 echo "❌ Failed to generate proper test script: {e}"
 echo "📁 Repository path: {repo_path}"
 echo "📝 Modified files: {', '.join(modified_files) if modified_files else 'None'}"
+echo ""
 echo "This is a fallback test that will fail to demonstrate error handling."
 exit 1
 """

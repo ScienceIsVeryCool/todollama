@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gitllama"
-version = "0.7.5"
+version = "0.8.0"
 description = "AI-powered git automation tool - clone, branch, change, commit, push with intelligence"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
@@ -35,6 +35,7 @@ dependencies = [
     "requests>=2.31.0",
     "jinja2>=3.1.0",
     "pygments>=2.15.0",
+    "importlib-metadata>=1.0.0; python_version<'3.8'",
 ]
 
 [project.optional-dependencies]

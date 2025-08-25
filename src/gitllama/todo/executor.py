@@ -185,17 +185,22 @@ IMPLEMENTATION PLAN:
 
 SCRIPT REQUIREMENTS:
 1. Start with #!/bin/bash and set -e for error handling
-2. Include ALL installation steps needed from a clean Ubuntu environment
-3. For Python projects:
+2. Begin with comprehensive environment logging:
+   - Print current working directory (pwd)
+   - List files in current directory (ls -la)
+   - Show disk space usage (df -h .)
+   - Display current user and system info (whoami, uname -a)
+3. Include ALL installation steps needed from a clean Ubuntu environment
+4. For Python projects:
    - Create and activate a virtual environment
    - Install all dependencies (pip install -r requirements.txt or similar)
    - Run any setup commands
-4. Test the actual functionality that was implemented
-5. Include meaningful echo statements to show progress
-6. Run any existing test suites if present (pytest, npm test, etc.)
-7. Test the specific features mentioned in the TODO
-8. Exit with code 0 on success, non-zero on failure
-9. Be thorough but complete within 60 seconds
+5. Test the actual functionality that was implemented
+6. Include meaningful echo statements to show progress
+7. Run any existing test suites if present (pytest, npm test, etc.)
+8. Test the specific features mentioned in the TODO
+9. Exit with code 0 on success, non-zero on failure
+10. Be thorough but complete within 60 seconds
 
 The script should verify that the TODO implementation actually works."""
 
@@ -219,11 +224,43 @@ TODO excerpt that was implemented:
         Returns:
             Tuple of (success, output, exit_code)
         """
-        logger.info(f"Running test.sh with {timeout}s timeout")
+        logger.info(f"Running test.sh with {timeout}s timeout from {repo_path}")
         
         test_script_path = repo_path / "test.sh"
         
+        # Add pre-execution environment logging
+        pre_execution_info = f"""
+🧪 GITLLAMA TEST EXECUTION STARTING
+=====================================
+📍 Execution Environment:
+  Repository Path: {repo_path}
+  Test Script Path: {test_script_path}
+  Current Working Directory: {Path.cwd()}
+  Script Size: {len(test_script_content)} bytes
+  Timeout: {timeout} seconds
+  
+📁 Pre-execution Directory State:
+"""
+        
         try:
+            # Gather pre-execution environment info
+            try:
+                import os
+                import shutil
+                dir_contents = subprocess.run(
+                    ["ls", "-la", str(repo_path)], 
+                    capture_output=True, text=True, timeout=5
+                ).stdout
+                disk_info = subprocess.run(
+                    ["df", "-h", str(repo_path)], 
+                    capture_output=True, text=True, timeout=5
+                ).stdout
+                pre_execution_info += f"{dir_contents}\n💾 Disk Usage:\n{disk_info}\n"
+            except Exception as e:
+                pre_execution_info += f"Could not gather pre-execution info: {e}\n"
+            
+            pre_execution_info += "=====================================\n\n"
+            
             # Write test script
             test_script_path.write_text(test_script_content)
             test_script_path.chmod(0o755)  # Make executable
@@ -254,11 +291,32 @@ TODO excerpt that was implemented:
             elapsed = time.time() - start_time
             logger.info(f"Test completed in {elapsed:.2f}s with exit code {exit_code}")
             
-            return success, output, exit_code
+            # Add post-execution summary
+            post_execution_info = f"""
+=====================================
+🧪 GITLLAMA TEST EXECUTION COMPLETED
+=====================================
+📊 Execution Summary:
+  Status: {'✅ SUCCESS' if success else '❌ FAILED'}
+  Exit Code: {exit_code}
+  Duration: {elapsed:.2f} seconds
+  Timeout: {'❌ YES' if exit_code == -1 else '✅ NO'}
+  
+📁 Repository Path: {repo_path}
+💾 Script Size: {len(test_script_content)} bytes
+🎯 Test completed at: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+=====================================
+"""
+            
+            # Combine all output
+            full_output = pre_execution_info + output + post_execution_info
+            
+            return success, full_output, exit_code
             
         except Exception as e:
             logger.error(f"Error running test script: {e}")
-            return False, f"Error executing test script: {str(e)}", -1
+            error_output = pre_execution_info + f"EXECUTION ERROR: {str(e)}"
+            return False, error_output, -1
         
         finally:
             # Clean up test script

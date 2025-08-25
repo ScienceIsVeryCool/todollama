@@ -60,7 +60,7 @@ class Congress:
         decision_type: str = "general"
     ) -> CongressDecision:
         """
-        Have all Representatives vote on whether the overall direction aligns with TODO.md
+        Have all Representatives independently vote on whether the current action is sound and appropriate
         
         Args:
             original_prompt: The original prompt sent to AI
@@ -75,13 +75,13 @@ class Congress:
         
         # Get the current session number
         session_num = len(self.voting_sessions) + 1
-        logger.info(f"🏛️ Congress Session #{session_num}: Evaluating TODO alignment for {decision_type}")
+        logger.info(f"🏛️ Congress Session #{session_num}: Independently evaluating current {decision_type} action")
         
         # Build comprehensive historical context for each representative
         historical_context = self._build_historical_context()
         
         for representative in REPRESENTATIVES:
-            vote = self._get_representative_todo_alignment_vote(
+            vote = self._get_representative_current_action_vote(
                 representative,
                 original_prompt,
                 ai_response,
@@ -153,37 +153,36 @@ class Congress:
                     } for vote in votes
                 ]
             },
-            f"Congressional TODO alignment vote (Session #{session_num})"
+            f"Congressional independent vote on current action (Session #{session_num})"
         )
         
         return decision
     
     def _build_historical_context(self) -> str:
-        """Build a comprehensive historical context from all previous voting sessions"""
+        """Build historical context with conversation details but NO voting results"""
         if not self.voting_sessions:
-            return "No previous voting sessions to reference."
+            return "No previous AI conversations to reference."
         
         context_parts = []
-        context_parts.append("=== CONGRESSIONAL VOTING HISTORY ===")
-        context_parts.append(f"Total Previous Sessions: {len(self.voting_sessions)}")
+        context_parts.append("=== PREVIOUS AI CONVERSATIONS ===")
+        context_parts.append(f"Total Previous AI Actions: {len(self.voting_sessions)}")
         context_parts.append("")
         
-        # Add each session with truncation to fit context windows
+        # Add each session but EXCLUDE voting results to ensure independent voting
         for session in self.voting_sessions:
-            context_parts.append(f"--- Session #{session['session_number']} ({session['decision_type']}) ---")
-            context_parts.append(f"Decision: {'APPROVED' if session['decision'].approved else 'REJECTED'} ({session['decision'].vote_count[0]}-{session['decision'].vote_count[1]})")
+            context_parts.append(f"--- AI Action #{session['session_number']} ({session['decision_type']}) ---")
             
-            # Add truncated prompt and response
-            prompt_preview = session['original_prompt'][:200] + ("..." if len(session['original_prompt']) > 200 else "")
-            response_preview = session['ai_response'][:200] + ("..." if len(session['ai_response']) > 200 else "")
+            # Add truncated prompt and response (the actual AI conversation)
+            prompt_preview = session['original_prompt'][:400] + ("..." if len(session['original_prompt']) > 400 else "")
+            response_preview = session['ai_response'][:400] + ("..." if len(session['ai_response']) > 400 else "")
             
             context_parts.append(f"Original Prompt: {prompt_preview}")
             context_parts.append(f"AI Response: {response_preview}")
             
-            # Add vote details
-            for vote_record in session['votes']:
-                vote_symbol = "✅" if vote_record['vote'] else "❌"
-                context_parts.append(f"  {vote_symbol} {vote_record['representative']}: {vote_record['reasoning'][:150]}...")
+            # Add context if available
+            if session.get('context'):
+                context_preview = session['context'][:200] + ("..." if len(session['context']) > 200 else "")
+                context_parts.append(f"Additional Context: {context_preview}")
             
             context_parts.append("")
         
@@ -212,7 +211,7 @@ class Congress:
         
         return '\n'.join(truncated_lines)
     
-    def _get_representative_todo_alignment_vote(
+    def _get_representative_current_action_vote(
         self,
         representative: Representative,
         original_prompt: str,
@@ -222,7 +221,7 @@ class Congress:
         historical_context: str,
         session_num: int
     ) -> CongressVote:
-        """Get a representative's vote on whether the overall direction aligns with TODO.md"""
+        """Get a representative's independent vote on whether the current action is sound and appropriate"""
         
         # Build the personality context
         base_prompt = build_context_prompt(representative)
@@ -230,16 +229,16 @@ class Congress:
         # Truncate historical context to fit the model's context window
         truncated_history = self._truncate_context_for_model(historical_context)
         
-        # Build the TODO alignment evaluation prompt
+        # Build the current action evaluation prompt
         eval_prompt = f"""{base_prompt}
 
 === CONGRESSIONAL SESSION #{session_num} ===
-You are evaluating whether the overall direction of our AI decision-making process aligns with the goals and requirements specified in the TODO.md file.
+You are evaluating whether the current AI action is in accordance with the TODO.md requirements and overall project direction.
 
 TODO.MD CONTENT:
 {self.todo_content}
 
-CURRENT DECISION CONTEXT:
+CURRENT AI ACTION TO EVALUATE:
 Decision Type: {decision_type}
 Original Prompt: {original_prompt[:500]}{"..." if len(original_prompt) > 500 else ""}
 AI Response: {ai_response[:500]}{"..." if len(ai_response) > 500 else ""}
@@ -248,20 +247,22 @@ Additional Context: {context if context else "None provided"}
 {truncated_history}
 
 === YOUR VOTING TASK ===
-Based on your personality, values, and the TODO.md requirements, vote on whether you believe the OVERALL DIRECTION of all these voting sessions (including this current one) is properly aligned with achieving the goals specified in the TODO.md file.
+Based on your personality, values, and the TODO.md requirements, vote YES or NO on whether you believe this CURRENT AI action is in accordance with everything - the TODO.md goals, good judgment, and proper project direction.
 
-Consider:
-1. Are we making decisions that move us toward completing the TODO items?
-2. Do the patterns in our previous voting sessions show good judgment?
-3. Is this current decision consistent with the TODO.md objectives?
-4. Based on your personality and values, do you approve of this overall trajectory?
+Vote independently based on:
+1. Does this current action align with the TODO.md requirements?
+2. Is this action a good decision that moves the project forward appropriately?
+3. Based on your personality and values, do you approve of this specific action?
+4. Does this action demonstrate sound reasoning and judgment?
+
+IMPORTANT: Vote independently on THIS action only. Do not be influenced by patterns or trends - evaluate this single action on its own merits.
 
 You must respond in this exact format:
 VOTE: [YES/NO]
 CONFIDENCE: [0.0-1.0]
-REASON: [Your reasoning for this vote based on TODO alignment and your values]
+REASON: [Your reasoning for this vote based on the current action and your values]
 
-Vote according to your nature and whether you believe we're on the right track to accomplish the TODO.md goals."""
+Vote according to your nature and whether this specific action is sound and appropriate."""
 
         # Get the representative's evaluation using their individual model
         messages = [{"role": "user", "content": eval_prompt}]
