@@ -175,6 +175,7 @@ ENVIRONMENT INFORMATION:
 - Python3 is installed and available
 - A virtual environment (venv) should be used for Python projects
 - The script will run from the project root: {repo_path}
+- IMPORTANT: Assume we are NOT running as sudo - use only user-level commands
 
 MODIFIED FILES:
 {files_list}

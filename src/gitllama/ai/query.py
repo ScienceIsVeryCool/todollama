@@ -138,6 +138,42 @@ File content:"""
         self.compressor = ContextCompressor(client, model)
         self._compression_enabled = True
         self.congress = Congress(client, model)
+        self._todo_content_set = False
+        
+        # Try to get TODO content from context tracker if available
+        self._auto_set_todo_content()
+    
+    def _auto_set_todo_content(self):
+        """Automatically set TODO content from context tracker if available"""
+        try:
+            from ..utils.context_tracker import context_tracker
+            # Look for TODO content in any stage
+            for stage in context_tracker.stages:
+                for var_name, var_data in stage.variables.items():
+                    if var_name == "todo_content" and var_data.get('content'):
+                        self.congress.set_todo_content(var_data['content'])
+                        self._todo_content_set = True
+                        logger.info("🏛️ Automatically set TODO content for Congress from context tracker")
+                        return
+        except Exception as e:
+            logger.debug(f"Could not auto-set TODO content: {e}")
+    
+    def ensure_todo_content_set(self):
+        """Ensure TODO content is set in Congress before voting"""
+        if not self._todo_content_set:
+            self._auto_set_todo_content()
+            
+            # If still not set, try to get from current context
+            if not self._todo_content_set:
+                # Use a default message about TODO alignment
+                default_todo = """gitllama is a meta aware system. it should be aware of things going on, like what stage it is on, etc. It should be able to give executive summary.
+
+We need to have congress be fed all previous messages but truncated to fit context window
+
+tell it to assume we are not sudo"""
+                self.congress.set_todo_content(default_todo)
+                self._todo_content_set = True
+                logger.info("🏛️ Set default TODO content for Congress")
     
     def multiple_choice(
         self, 
@@ -466,7 +502,10 @@ File content:"""
         execution_time = time.time() - start_time
         logger.info(f"⏱️ Query executed in {execution_time:.2f} seconds")
         
-        # Get congress evaluation
+        # Ensure TODO content is set before congressional evaluation
+        self.ensure_todo_content_set()
+        
+        # Get congress evaluation (now focused on TODO alignment)
         congress_decision = self.congress.evaluate_response(
             original_prompt=prompt,
             ai_response=response,
